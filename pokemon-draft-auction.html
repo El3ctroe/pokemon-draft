@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mystery Pokémon Draft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#CC0000;--red2:#FF4444;
+  --yellow:#FFCB05;--yellow2:#D4A600;
+  --bg:#0F0F1A;--surf:#1A1A2E;--surf2:#16213E;--card:#1D1D30;--card2:#252540;
+  --border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.2);
+  --text:#F0F0F0;--muted:#7A7A99;--muted2:#5A5A77;
+  --green:#4CAF50;--green2:#2E7D32;
+  --blue:#2196F3;
+  --fd:'Press Start 2P',monospace;
+  --fb:'Nunito',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--fb);min-height:100vh;overflow-x:hidden}
+.screen{display:none;min-height:100vh}
+.screen.active{display:flex;flex-direction:column}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.active{display:flex}
+.modal-box{background:var(--surf);border:1px solid var(--border2);border-radius:16px;padding:1.5rem;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative}
+.modal-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px}
+.modal-close:hover{color:var(--red2)}
+
+/* TYPE COLORS */
+.t-fire{background:#F08030}.t-water{background:#6890F0}.t-grass{background:#78C850}
+.t-electric{background:#F8D030;color:#333!important}.t-psychic{background:#F85888}
+.t-ice{background:#98D8D8;color:#333!important}.t-dragon{background:#7038F8}
+.t-dark{background:#705848}.t-fairy{background:#EE99AC;color:#333!important}
+.t-normal{background:#A8A878;color:#333!important}.t-fighting{background:#C03028}
+.t-flying{background:#A890F0}.t-poison{background:#A040A0}
+.t-ground{background:#E0C068;color:#333!important}.t-rock{background:#B8A038;color:#333!important}
+.t-bug{background:#A8B820;color:#333!important}.t-ghost{background:#705898}
+.t-steel{background:#B8B8D0;color:#333!important}.t-unknown{background:#68A090}
+.type-badge{display:inline-block;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:.5px}
+
+/* COMMON COMPONENTS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border:none;border-radius:8px;cursor:pointer;font-family:var(--fb);font-weight:700;font-size:14px;transition:all .13s;white-space:nowrap;text-decoration:none}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover:not(:disabled){background:var(--red2)}
+.btn-yellow{background:var(--yellow);color:#111}.btn-yellow:hover:not(:disabled){background:#FFD740}
+.btn-green{background:var(--green);color:#fff}.btn-green:hover:not(:disabled){background:#43A047}
+.btn-blue{background:var(--blue);color:#fff}.btn-blue:hover:not(:disabled){background:#1976D2}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover:not(:disabled){border-color:var(--border2);color:var(--text)}
+.btn-outline-red{background:transparent;border:1.5px solid var(--red);color:var(--red2)}.btn-outline-red:hover:not(:disabled){background:rgba(204,0,0,.1)}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:6px}
+.btn-lg{padding:13px 30px;font-family:var(--fd);font-size:10px;letter-spacing:1px;border-radius:10px}
+.btn-icon{padding:6px;border-radius:6px;font-size:16px}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.25rem;width:100%}
+.card-title{font-family:var(--fd);font-size:9px;color:var(--yellow);margin-bottom:1rem;letter-spacing:2px;text-transform:uppercase}
+label.lbl{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+input[type=text],input[type=number],input[type=password],textarea{width:100%;background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;transition:border-color .2s;resize:vertical}
+input:focus,textarea:focus{border-color:var(--yellow)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field-grp{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.hint{font-size:11px;color:var(--muted2);margin-top:3px;line-height:1.5}
+.err{background:rgba(204,0,0,.15);border:1px solid var(--red);border-radius:7px;padding:8px 12px;font-size:13px;color:#FF8888;margin-top:8px}
+.suc{background:rgba(76,175,80,.12);border:1px solid var(--green);border-radius:7px;padding:8px 12px;font-size:13px;color:#A5D6A7;margin-top:8px}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.15);border-top-color:var(--yellow);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tag{display:inline-block;background:rgba(255,203,5,.1);border:1px solid rgba(255,203,5,.25);color:var(--yellow);border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;letter-spacing:.5px}
+.host-badge{background:var(--red);color:#fff;border-radius:5px;font-size:10px;font-weight:900;padding:3px 8px;letter-spacing:1px}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surf2);border:1px solid var(--border2);color:var(--text);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;z-index:999;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;max-width:90vw}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{border-color:var(--red);color:var(--red2)}
+.toast.ok{border-color:var(--green);color:#A5D6A7}
+
+/* ====== SPLASH ====== */
+#splash{align-items:center;justify-content:center;padding:2rem 1.5rem;text-align:center}
+.logo-ball{width:72px;height:72px;margin:0 auto 1.25rem}
+.game-title{font-family:var(--fd);font-size:clamp(11px,2.5vw,16px);color:var(--yellow);line-height:2;margin-bottom:.5rem;letter-spacing:2px}
+.game-sub{color:var(--muted);font-size:14px;margin-bottom:2.5rem}
+.splash-btns{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px}
+.splash-link{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;margin-top:1rem}
+.splash-link:hover{color:var(--yellow)}
+
+/* ====== FB CONFIG ====== */
+#fb-config{align-items:center;justify-content:flex-start;padding:2rem 1.5rem 3rem}
+.config-wrap{width:100%;max-width:500px}
+.back-btn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer;margin-bottom:1.5rem;background:none;border:none}
+.back-btn:hover{color:var(--text)}
+
+/* ====== JOIN ====== */
+#join-screen{align-items:center;justify-content:center;padding:2rem 1.5rem}
+.join-wrap{width:100%;max-width:400px}
+
+/* ====== HOST SETUP ====== */
+#host-setup{align-items:center;justify-content:flex-start;padding:2rem 1.5rem 3rem}
+.setup-wrap{width:100%;max-width:600px}
+.room-code-big{font-family:var(--fd);font-size:clamp(22px,5vw,36px);color:var(--yellow);letter-spacing:6px;text-align:center;padding:16px;background:var(--surf2);border-radius:12px;margin-bottom:6px;cursor:pointer;border:2px dashed rgba(255,203,5,.3);transition:border-color .2s}
+.room-code-big:hover{border-color:var(--yellow)}
+.copy-hint{text-align:center;font-size:11px;color:var(--muted);margin-bottom:1.5rem}
+.draft-list-preview{margin-top:10px;max-height:180px;overflow-y:auto;background:var(--surf2);border-radius:8px;padding:8px}
+.dlp-row{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:5px;font-size:12px}
+.dlp-row:hover{background:var(--card)}
+.dlp-num{color:var(--muted2);width:28px;flex-shrink:0;font-size:10px}
+.dlp-name{flex:1;font-weight:700}
+.dlp-bst{color:var(--yellow);font-size:11px;font-weight:700}
+
+/* ====== LOBBY ====== */
+#lobby-screen{align-items:center;justify-content:flex-start;padding:2rem 1.5rem 3rem}
+.lobby-wrap{width:100%;max-width:560px}
+.lobby-players{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:1.5rem}
+.lobby-p{background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:12px;text-align:center}
+.lobby-p.me{border-color:var(--yellow)}
+.lobby-avatar{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;margin:0 auto 7px;color:#fff}
+.lobby-pname{font-weight:900;font-size:13px}
+.lobby-ptag{font-size:10px;color:var(--muted);margin-top:3px}
+.waiting-anim{display:flex;gap:5px;align-items:center;justify-content:center;margin-top:5px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:pulse 1.4s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes pulse{0%,80%,100%{transform:scale(1);opacity:.5}40%{transform:scale(1.3);opacity:1}}
+
+/* ====== DRAFT SCREEN ====== */
+#draft-screen{flex-direction:column}
+.draft-header{background:var(--surf);border-bottom:2px solid var(--red);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:10;min-height:50px}
+.dh-title{font-family:var(--fd);font-size:8px;color:var(--yellow);letter-spacing:2px;flex-shrink:0}
+.dh-room{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-family:var(--fd);font-size:8px;color:var(--muted);letter-spacing:2px;cursor:pointer}
+.dh-room:hover{border-color:var(--yellow);color:var(--yellow)}
+.dh-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.budget-chip{background:var(--card);border:1px solid rgba(255,203,5,.3);border-radius:20px;padding:5px 12px;font-weight:900;color:var(--yellow);font-size:14px}
+.round-chip{font-size:11px;color:var(--muted)}
+
+/* DRAFT BODY — 3 col desktop, 1 col mobile */
+.draft-body{display:grid;grid-template-columns:220px 1fr 220px;flex:1;overflow:hidden}
+@media(max-width:860px){
+  .draft-body{grid-template-columns:1fr;overflow-y:auto}
+  .draft-sidebar,.draft-sidebar-r{max-height:none;border:none;border-top:1px solid var(--border)}
+}
+.draft-sidebar{background:var(--surf);border-right:1px solid var(--border);overflow-y:auto;padding:12px;max-height:calc(100vh - 50px)}
+.draft-sidebar-r{background:var(--surf);border-left:1px solid var(--border);overflow-y:auto;padding:12px;max-height:calc(100vh - 50px)}
+.sidebar-label{font-family:var(--fd);font-size:7px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+
+/* PLAYER CARDS IN SIDEBAR */
+.p-card{background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;transition:border-color .2s}
+.p-card.is-leading{border-color:var(--green)}
+.p-card.is-me{border-color:rgba(255,203,5,.4)}
+.p-card.is-full{opacity:.55}
+.pc-top{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.pc-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0;color:#fff}
+.pc-name{font-weight:900;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-badges{display:flex;gap:4px;flex-wrap:wrap}
+.budget-bar{background:var(--surf);border-radius:3px;height:4px;overflow:hidden;margin-bottom:4px}
+.budget-fill{height:100%;background:var(--yellow);border-radius:3px;transition:width .5s}
+.budget-fill.low{background:var(--red2)}
+.pc-stats{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.pc-coins{font-weight:900;color:var(--yellow);font-size:13px}
+.mini-roster{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.mini-pk{width:30px;height:30px;border-radius:5px;background:var(--surf);overflow:hidden;cursor:default}
+.mini-pk img{width:100%;height:100%;object-fit:contain}
+.mini-pk.mystery{display:flex;align-items:center;justify-content:center;font-size:13px}
+.edit-budget-btn{background:none;border:none;cursor:pointer;color:var(--muted);padding:2px 5px;border-radius:4px;font-size:11px;transition:color .15s}
+.edit-budget-btn:hover{color:var(--yellow)}
+
+/* AUCTION CENTER */
+.auction-center{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px 16px;overflow-y:auto;gap:16px}
+
+/* MYSTERY CARD */
+.mystery-card{background:var(--card);border:2px solid var(--border2);border-radius:18px;padding:20px;text-align:center;width:100%;max-width:340px;transition:border-color .4s}
+.mystery-card.has-bid{border-color:var(--green)}
+.mystery-card.sold-card{border-color:var(--yellow)}
+.mystery-card.unsold-card{border-color:var(--muted2)}
+.mystery-silhouette{width:130px;height:130px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;position:relative}
+.mystery-silhouette svg{width:100%;height:100%}
+.poke-sprite{width:130px;height:130px;object-fit:contain;margin-bottom:12px}
+.mystery-label{font-family:var(--fd);font-size:14px;color:var(--muted);margin-bottom:10px;letter-spacing:4px}
+.revealed-name{font-family:var(--fd);font-size:clamp(10px,2vw,14px);color:#fff;text-transform:capitalize;margin-bottom:10px;letter-spacing:2px;animation:revealPop .4s ease-out}
+@keyframes revealPop{0%{transform:scale(.7);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+.types-row{display:flex;justify-content:center;gap:8px;margin-bottom:12px}
+.bst-display{background:var(--surf);border-radius:8px;padding:8px 14px;display:inline-block;margin-bottom:12px}
+.bst-label{font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.bst-num{font-family:var(--fd);font-size:18px;color:var(--yellow);display:block;margin-top:2px}
+.pk-meta{font-size:10px;color:var(--muted);margin-bottom:4px}
+
+/* AUCTION INFO */
+.auction-info{background:var(--surf);border-radius:10px;padding:12px 14px;width:100%;max-width:340px}
+.ai-label{font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.ai-bid{font-family:var(--fd);font-size:22px;color:var(--yellow);margin:4px 0;line-height:1.2}
+.ai-bidder{font-size:13px;color:var(--green);font-weight:700;margin-top:2px}
+.ai-nobid{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* TIMER */
+.timer-wrap{width:100%;max-width:340px;text-align:center}
+.timer-num{font-family:var(--fd);font-size:36px;line-height:1;margin-bottom:6px;transition:color .3s}
+.timer-num.ok{color:var(--green)}.timer-num.warn{color:var(--yellow)}.timer-num.hot{color:var(--red2)}
+.timer-bar-bg{background:var(--surf);border-radius:4px;height:6px;overflow:hidden;margin-bottom:4px}
+.timer-bar{height:100%;border-radius:4px;transition:width .9s linear, background .3s}
+.timer-bar.ok{background:var(--green)}.timer-bar.warn{background:var(--yellow)}.timer-bar.hot{background:var(--red2)}
+.timer-sub{font-size:10px;color:var(--muted)}
+.timer-waiting{font-size:12px;color:var(--muted);padding:8px;text-align:center}
+
+/* BID INPUT AREA */
+.bid-area{width:100%;max-width:420px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:14px}
+.bid-area.my-turn{border-color:rgba(255,203,5,.4)}
+.bid-area.cant-bid{opacity:.5}
+.ba-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.ba-name{font-weight:900;font-size:14px}
+.ba-budget{font-size:11px;color:var(--muted)}
+.bid-input-row{display:flex;gap:8px;margin-bottom:8px}
+.bid-field{flex:1;background:var(--surf)!important;border:1.5px solid var(--border)!important;border-radius:7px!important;color:var(--text)!important;font-size:16px!important;font-weight:700!important;padding:10px 12px!important;outline:none!important;transition:border-color .2s!important}
+.bid-field:focus{border-color:var(--yellow)!important}
+.quick-bids{display:flex;gap:5px;flex-wrap:wrap}
+.qb{background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;color:var(--muted);transition:all .13s}
+.qb:hover{border-color:var(--yellow);color:var(--yellow)}
+.bid-hint{font-size:10px;color:var(--muted2);margin-top:6px;text-align:center;line-height:1.5}
+.bid-reason{font-size:11px;color:var(--red2);font-weight:700;padding:8px;text-align:center}
+
+/* HOST CONTROLS */
+.host-controls{width:100%;max-width:420px;background:rgba(204,0,0,.08);border:1.5px solid rgba(204,0,0,.25);border-radius:12px;padding:12px}
+.hc-label{font-size:9px;color:var(--red2);font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.hc-btns{display:flex;flex-wrap:wrap;gap:8px}
+
+/* SOLD/UNSOLD BANNERS */
+.sold-banner{background:var(--yellow);color:#111;border-radius:12px;padding:14px 20px;text-align:center;width:100%;max-width:380px;animation:slideUp .3s ease-out}
+.sold-ttl{font-family:var(--fd);font-size:13px;margin-bottom:5px}
+.sold-winner{font-size:15px;font-weight:900}
+.sold-price{font-size:12px;opacity:.65;margin-top:2px}
+.unsold-banner{background:rgba(120,120,120,.12);border:1.5px solid var(--muted2);border-radius:12px;padding:12px 20px;text-align:center;width:100%;max-width:380px}
+.unsold-ttl{font-family:var(--fd);font-size:11px;color:var(--muted);margin-bottom:4px}
+.unsold-sub{font-size:12px;color:var(--muted2)}
+@keyframes slideUp{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
+
+/* LOG */
+.log-item{font-size:11px;padding:6px 8px;border-radius:5px;margin-bottom:5px;border-left:2.5px solid var(--border);background:var(--card);line-height:1.5;word-break:break-word}
+.log-item.bid{border-left-color:var(--green)}
+.log-item.sold{border-left-color:var(--yellow)}
+.log-item.nom{border-left-color:var(--red2)}
+.log-item.unsold{border-left-color:var(--muted)}
+.log-item.info{border-left-color:var(--blue)}
+
+/* ====== RESULTS ====== */
+#results-screen{align-items:center;padding:2rem 1.5rem 4rem}
+.results-wrap{width:100%;max-width:1000px}
+.results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:1.5rem}
+.res-card{background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:14px}
+.res-card.winner{border-color:var(--yellow)}
+.res-pname{font-family:var(--fd);font-size:9px;color:var(--yellow);margin-bottom:3px}
+.res-stats{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-bottom:10px}
+.roster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+.res-pk{background:var(--surf);border-radius:7px;padding:5px 4px;text-align:center}
+.res-pk img{width:44px;height:44px;object-fit:contain}
+.res-pk-name{font-size:9px;font-weight:700;text-transform:capitalize;margin-top:2px;line-height:1.3}
+.res-pk-price{font-size:9px;color:var(--yellow)}
+.res-pk-type{margin-top:2px}
+
+/* ====== TUTORIAL MODAL ====== */
+.tut-step{display:flex;gap:12px;margin-bottom:1.25rem;align-items:flex-start}
+.tut-num{width:28px;height:28px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0;margin-top:1px}
+.tut-content{flex:1}
+.tut-title{font-weight:900;font-size:14px;margin-bottom:4px}
+.tut-desc{font-size:13px;color:var(--muted);line-height:1.6}
+.tut-code{background:var(--surf2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-family:monospace;font-size:12px;color:var(--yellow);margin-top:6px;word-break:break-all;line-height:1.7}
+.tut-divider{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+
+/* ====== PROGRESS BAR ====== */
+.draft-progress{background:var(--surf2);height:3px;position:relative;overflow:hidden}
+.draft-progress-fill{height:100%;background:var(--red);transition:width .5s ease}
+
+/* MISC */
+.center-msg{text-align:center;padding:3rem 1.5rem;color:var(--muted);font-size:14px}
+.big-q{font-size:60px;margin-bottom:12px;opacity:.3}
+.separator{border:none;border-top:1px solid var(--border);margin:1rem 0}
+
+/* Animations */
+.shake{animation:shake .3s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+</style>
+</head>
+<body>
+
+<!-- ======================== SCREENS ======================== -->
+
+<!-- SPLASH -->
+<div id="splash" class="screen">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:2rem 1.5rem;text-align:center">
+    <svg class="logo-ball" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="47" fill="#CC0000"/>
+      <rect x="3" y="47" width="94" height="6" fill="#111"/>
+      <circle cx="50" cy="50" r="47" fill="none" stroke="#111" stroke-width="4"/>
+      <circle cx="50" cy="50" r="14" fill="#111"/>
+      <circle cx="50" cy="50" r="9" fill="white"/>
+    </svg>
+    <div class="game-title">MYSTERY POKÉMON<br>DRAFT AUCTION</div>
+    <div class="game-sub">Multiplayer · Real-time · Competitive</div>
+    <div class="splash-btns">
+      <button class="btn btn-yellow btn-lg" onclick="goHost()">🎮 Host a Draft</button>
+      <button class="btn btn-red btn-lg" onclick="goJoin()">👥 Join a Draft</button>
+    </div>
+    <div style="margin-top:1.5rem;display:flex;gap:18px">
+      <span class="splash-link" onclick="showTutorial()">📖 Firebase Setup Tutorial</span>
+      <span class="splash-link" onclick="showScreen('fb-config')">⚙️ Configure Firebase</span>
+    </div>
+    <div id="splash-err" style="display:none;margin-top:14px;max-width:340px" class="err"></div>
+  </div>
+</div>
+
+<!-- FIREBASE CONFIG -->
+<div id="fb-config" class="screen">
+  <div style="padding:2rem 1.5rem 3rem;max-width:520px;width:100%;margin:0 auto">
+    <button class="back-btn" onclick="showScreen('splash')">← Back</button>
+    <div class="card-title" style="margin-bottom:.5rem">⚙️ Firebase Configuration</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
+      Paste your Firebase project config below. Don't have one? Click
+      <span class="splash-link" style="display:inline" onclick="showTutorial()">Firebase Setup Tutorial</span>
+      for step-by-step instructions.
+    </p>
+    <div class="field-grp"><label class="lbl">API Key</label><input type="text" id="cfg-apiKey" placeholder="AIzaSy..."></div>
+    <div class="field-grp"><label class="lbl">Auth Domain</label><input type="text" id="cfg-authDomain" placeholder="your-project.firebaseapp.com"></div>
+    <div class="field-grp"><label class="lbl">Database URL</label><input type="text" id="cfg-databaseURL" placeholder="https://your-project-default-rtdb.firebaseio.com"></div>
+    <div class="field-grp"><label class="lbl">Project ID</label><input type="text" id="cfg-projectId" placeholder="your-project-id"></div>
+    <div class="field-grp"><label class="lbl">Storage Bucket</label><input type="text" id="cfg-storageBucket" placeholder="your-project.appspot.com"></div>
+    <div class="field-grp"><label class="lbl">Messaging Sender ID</label><input type="text" id="cfg-messagingSenderId" placeholder="123456789012"></div>
+    <div class="field-grp"><label class="lbl">App ID</label><input type="text" id="cfg-appId" placeholder="1:123...:web:abc..."></div>
+    <div id="cfg-err" style="display:none" class="err"></div>
+    <div id="cfg-ok" style="display:none" class="suc">✓ Firebase connected! You can now host or join drafts.</div>
+    <div style="display:flex;gap:10px;margin-top:1rem;flex-wrap:wrap">
+      <button class="btn btn-yellow" onclick="saveConfig()">Save & Test Connection</button>
+      <button class="btn btn-ghost" onclick="clearConfig()">Clear Saved Config</button>
+    </div>
+  </div>
+</div>
+
+<!-- JOIN -->
+<div id="join-screen" class="screen">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:2rem 1.5rem">
+    <div class="join-wrap">
+      <button class="back-btn" onclick="showScreen('splash')">← Back</button>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">👥 Join a Draft</div>
+        <div class="field-grp"><label class="lbl">Room Code</label>
+          <input type="text" id="join-code" placeholder="Enter 6-letter code" maxlength="8"
+            style="font-family:var(--fd);font-size:16px;letter-spacing:4px;text-transform:uppercase"
+            oninput="this.value=this.value.toUpperCase()"
+            onkeydown="if(event.key==='Enter')document.getElementById('join-name').focus()">
+        </div>
+        <div class="field-grp"><label class="lbl">Your Name</label>
+          <input type="text" id="join-name" placeholder="e.g. Ash, Misty, Brock" maxlength="18"
+            onkeydown="if(event.key==='Enter')doJoin()">
+        </div>
+        <div id="join-err" style="display:none" class="err"></div>
+        <button class="btn btn-red" style="width:100%;margin-top:8px;padding:12px" id="join-btn" onclick="doJoin()">Join Room →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HOST SETUP -->
+<div id="host-setup" class="screen">
+  <div style="padding:2rem 1.5rem 3rem;max-width:640px;width:100%;margin:0 auto" id="setup-content">
+    <div class="card-title">🎮 Host Setup</div>
+    <div id="room-code-display" class="room-code-big" onclick="copyRoomCode()" title="Click to copy">——————</div>
+    <div class="copy-hint">Click code to copy · Share with friends</div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">⚙️ Draft Rules</div>
+      <div class="two-col" style="margin-bottom:12px">
+        <div class="field-grp"><label class="lbl">Starting Budget</label><input type="number" id="s-budget" value="1000" min="50">
+          <div class="hint">coins per player</div></div>
+        <div class="field-grp"><label class="lbl">Max Team Size</label><input type="number" id="s-maxteam" value="6" min="1" max="30">
+          <div class="hint">Pokémon per player</div></div>
+      </div>
+      <div class="two-col">
+        <div class="field-grp"><label class="lbl">Host Name</label><input type="text" id="s-hostname" placeholder="Your name" maxlength="18" value="Host"></div>
+        <div class="field-grp"><label class="lbl">Show Host in Draft</label>
+          <select id="s-hostbid" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
+            <option value="0">Host doesn't bid</option>
+            <option value="1">Host can bid too</option>
+          </select>
+          <div class="hint">Can the host also bid?</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">📋 Draft List</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+        Load a <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:11px">draftorder.txt</code> file 
+        or paste Pokémon manually. Format: <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:11px">Name,Type1,Type2,BST</code> (one per line, Type2 optional)
+      </p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('file-input').click()">📁 Load .txt File</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadSampleList()">🎲 Use Sample List</button>
+        <input type="file" id="file-input" accept=".txt,.csv" style="display:none" onchange="loadFile(event)">
+      </div>
+      <textarea id="draft-textarea" rows="6" placeholder="Charizard,Fire,Flying,534&#10;Blastoise,Water,,530&#10;Mewtwo,Psychic,,680&#10;Raichu,Electric,,485&#10;Gengar,Ghost,Poison,500"></textarea>
+      <div id="draft-preview" class="draft-list-preview" style="display:none"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <span id="draft-count" style="font-size:11px;color:var(--muted)">0 Pokémon loaded</span>
+        <button class="btn btn-ghost btn-sm" onclick="previewDraftList()">Preview List</button>
+      </div>
+      <div id="draft-err" style="display:none" class="err"></div>
+    </div>
+
+    <div id="setup-err" style="display:none" class="err"></div>
+    <button class="btn btn-yellow btn-lg" style="width:100%;padding:14px 0;margin-top:4px" id="open-lobby-btn" onclick="openLobby()">Open Lobby ▶</button>
+  </div>
+</div>
+
+<!-- LOBBY -->
+<div id="lobby-screen" class="screen">
+  <div style="padding:2rem 1.5rem 3rem;max-width:600px;width:100%;margin:0 auto">
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div class="card-title" style="text-align:center">🎯 Waiting Room</div>
+      <div id="lobby-code-display" class="room-code-big" onclick="copyRoomCode()" style="max-width:300px;margin:0 auto 6px">——</div>
+      <div class="copy-hint">Share this code with your friends</div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-title">Players Joined</div>
+      <div id="lobby-players" class="lobby-players"></div>
+      <div class="waiting-anim" id="lobby-waiting">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        <span style="font-size:12px;color:var(--muted);margin-left:4px">Waiting for players to join...</span>
+      </div>
+    </div>
+
+    <div id="lobby-host-controls" style="display:none">
+      <div id="lobby-err" style="display:none" class="err" style="margin-bottom:10px"></div>
+      <button class="btn btn-yellow btn-lg" style="width:100%;padding:14px 0" id="start-btn" onclick="startDraft()">▶ Start Draft</button>
+      <div style="text-align:center;margin-top:10px">
+        <span class="splash-link" onclick="showScreen('host-setup')">← Back to Setup</span>
+      </div>
+    </div>
+    <div id="lobby-player-msg" style="display:none;text-align:center">
+      <div class="waiting-anim" style="justify-content:center">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        <span style="font-size:13px;color:var(--muted);margin-left:6px">Waiting for host to start...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DRAFT -->
+<div id="draft-screen" class="screen">
+  <div class="draft-header">
+    <span class="dh-title">DRAFT</span>
+    <span class="dh-room" id="dh-room-code" onclick="copyRoomCode()" title="Click to copy room code"></span>
+    <span class="round-chip" id="dh-round">Round 1</span>
+    <span id="dh-progress" style="font-size:10px;color:var(--muted2)"></span>
+    <div class="dh-right">
+      <span class="budget-chip" id="dh-budget" style="display:none"></span>
+      <span id="dh-host-badge" style="display:none" class="host-badge">HOST</span>
+    </div>
+  </div>
+  <div class="draft-progress"><div class="draft-progress-fill" id="draft-prog-fill" style="width:0%"></div></div>
+  <div class="draft-body">
+    <div class="draft-sidebar">
+      <div class="sidebar-label">Players</div>
+      <div id="sidebar-players"></div>
+    </div>
+    <div class="auction-center" id="auction-center"></div>
+    <div class="draft-sidebar-r">
+      <div class="sidebar-label">Auction Log</div>
+      <div id="auction-log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div id="results-screen" class="screen">
+  <div style="padding:2rem 1.5rem 4rem;max-width:1000px;width:100%;margin:0 auto">
+    <h1 class="game-title" style="text-align:center;margin-bottom:.5rem">🏆 FINAL ROSTERS</h1>
+    <p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:2rem">The mystery is revealed!</p>
+    <div id="results-content" class="results-grid"></div>
+    <div style="text-align:center;margin-top:2.5rem;display:flex;gap:12px;justify-content:center;flex-wrap:wrap" id="results-host-controls" style="display:none">
+      <button class="btn btn-yellow btn-lg" onclick="newDraft()">▶ New Draft (Same Players)</button>
+      <button class="btn btn-ghost btn-lg" onclick="backToSplash()">🏠 Back to Home</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== MODALS ======================== -->
+
+<!-- TUTORIAL -->
+<div id="modal-tutorial" class="modal-overlay" onclick="if(event.target===this)closeTutorial()">
+  <div class="modal-box" style="max-width:600px">
+    <button class="modal-close" onclick="closeTutorial()">✕</button>
+    <div class="card-title" style="margin-bottom:1.25rem">📖 Firebase Setup Tutorial</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">Firebase gives you a free real-time database so all your friends' screens sync instantly. Setup takes about 5 minutes — no coding required.</p>
+
+    <div class="tut-step">
+      <div class="tut-num">1</div>
+      <div class="tut-content">
+        <div class="tut-title">Go to Firebase Console</div>
+        <div class="tut-desc">Open <a href="https://console.firebase.google.com" target="_blank" style="color:var(--yellow)">console.firebase.google.com</a> and sign in with your Google account.</div>
+      </div>
+    </div>
+
+    <div class="tut-step">
+      <div class="tut-num">2</div>
+      <div class="tut-content">
+        <div class="tut-title">Create a New Project</div>
+        <div class="tut-desc">Click <strong style="color:#fff">Add Project</strong>. Give it any name like "pokemon-draft". Disable Google Analytics (not needed). Click <strong style="color:#fff">Create Project</strong>.</div>
+      </div>
+    </div>
+
+    <div class="tut-step">
+      <div class="tut-num">3</div>
+      <div class="tut-content">
+        <div class="tut-title">Add a Web App</div>
+        <div class="tut-desc">On the project overview page, click the <strong style="color:#fff">&lt;/&gt;</strong> web icon. Name it anything. Do NOT enable Firebase Hosting. Click <strong style="color:#fff">Register App</strong>.</div>
+      </div>
+    </div>
+
+    <div class="tut-step">
+      <div class="tut-num">4</div>
+      <div class="tut-content">
+        <div class="tut-title">Copy the Config</div>
+        <div class="tut-desc">Firebase will show you a <code style="background:var(--surf2);padding:1px 5px;border-radius:3px;font-size:11px">firebaseConfig</code> object. Copy the values inside it. Skip past the "npm install" steps and click <strong style="color:#fff">Continue to Console</strong>.</div>
+        <div class="tut-code">apiKey: "AIzaSy..."<br>authDomain: "your-project.firebaseapp.com"<br>databaseURL: "https://your-project-default-rtdb.firebaseio.com"<br>...</div>
+      </div>
+    </div>
+
+    <div class="tut-step">
+      <div class="tut-num">5</div>
+      <div class="tut-content">
+        <div class="tut-title">Enable Realtime Database</div>
+        <div class="tut-desc">In the left sidebar, click <strong style="color:#fff">Build → Realtime Database</strong>. Click <strong style="color:#fff">Create Database</strong>. Choose a region (any). When asked about security rules, choose <strong style="color:#fff">Start in test mode</strong>. Click <strong style="color:#fff">Enable</strong>.</div>
+      </div>
+    </div>
+
+    <div class="tut-step">
+      <div class="tut-num">6</div>
+      <div class="tut-content">
+        <div class="tut-title">Paste Config into this App</div>
+        <div class="tut-desc">Back in this app, click <strong style="color:#fff">Configure Firebase</strong> on the home screen and paste each value from the config object into the matching field. Click <strong style="color:#fff">Save & Test Connection</strong>.</div>
+      </div>
+    </div>
+
+    <hr class="tut-divider">
+    <div style="font-size:12px;color:var(--muted);line-height:1.7">
+      <strong style="color:#fff">⚠️ Note on security:</strong> "Test mode" means anyone with your room code can join. That's fine for a friend group! The free Spark plan gives you 1GB of data and 100 simultaneous connections — way more than you'll ever need for a draft night. Test mode rules expire after 30 days; to extend them, go to Realtime Database → Rules and reset the expiry date.
+    </div>
+    <button class="btn btn-yellow" style="width:100%;margin-top:1.25rem" onclick="closeTutorial();showScreen('fb-config')">Configure Firebase Now →</button>
+  </div>
+</div>
+
+<!-- EDIT BUDGET -->
+<div id="modal-edit-budget" class="modal-overlay" onclick="if(event.target===this)document.getElementById('modal-edit-budget').classList.remove('active')">
+  <div class="modal-box" style="max-width:360px">
+    <button class="modal-close" onclick="document.getElementById('modal-edit-budget').classList.remove('active')">✕</button>
+    <div class="card-title">💰 Edit Budget</div>
+    <div style="margin-bottom:14px">
+      <strong id="eb-player-name" style="font-size:16px"></strong>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">Current: <span id="eb-current" style="color:var(--yellow);font-weight:700"></span> coins</div>
+    </div>
+    <div class="field-grp">
+      <label class="lbl">Set New Budget</label>
+      <input type="number" id="eb-input" min="0" placeholder="New amount"
+        onkeydown="if(event.key==='Enter')doEditBudget()">
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-ghost btn-sm" onclick="eb_add(50)">+50</button>
+      <button class="btn btn-ghost btn-sm" onclick="eb_add(100)">+100</button>
+      <button class="btn btn-ghost btn-sm" onclick="eb_add(200)">+200</button>
+      <button class="btn btn-ghost btn-sm" onclick="eb_add(-50)">-50</button>
+      <button class="btn btn-ghost btn-sm" onclick="eb_add(-100)">-100</button>
+    </div>
+    <div id="eb-err" style="display:none" class="err"></div>
+    <button class="btn btn-yellow" style="width:100%" onclick="doEditBudget()">Set Budget</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- ======================== SCRIPT ======================== -->
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const MIN_BID = 5;
+const MIN_INCREMENT = 5;
+const DEFAULT_TIMER_SEC = 60;
+const SNIPE_PROTECT_SEC = 10;
+
+// ============================================================
+// LOCAL STATE
+// ============================================================
+let db = null;
+let roomRef = null;
+let roomState = null;
+let hostTickInterval = null;
+let countdownAnimFrame = null;
+let editingPlayerId = null;
+
+const local = {
+  playerId: localStorage.getItem('draft_pid') || genId(),
+  roomCode: null,
+  name: null,
+  isHost: false,
+};
+localStorage.setItem('draft_pid', local.playerId);
+
+// Player color palette
+const PLAYER_COLORS = ['#E74C3C','#3498DB','#2ECC71','#9B59B6','#F39C12','#1ABC9C','#E67E22','#E91E63'];
+
+// ============================================================
+// FIREBASE
+// ============================================================
+function tryInitFirebase() {
+  const cfg = getSavedConfig();
+  if (!cfg || !cfg.databaseURL) return false;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    else firebase.app();
+    db = firebase.database();
+    return true;
+  } catch(e) { console.error(e); return false; }
+}
+
+function getSavedConfig() {
+  try { return JSON.parse(localStorage.getItem('draft_firebase_config') || 'null'); }
+  catch { return null; }
+}
+
+function saveConfig() {
+  const fields = ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'];
+  const cfg = {};
+  for (const f of fields) {
+    const v = document.getElementById('cfg-'+f)?.value?.trim();
+    if (v) cfg[f] = v;
+  }
+  if (!cfg.databaseURL) { show('cfg-err','Database URL is required'); return; }
+  localStorage.setItem('draft_firebase_config', JSON.stringify(cfg));
+  // Re-init
+  try {
+    if (firebase.apps.length) { firebase.app().delete().then(()=>{ firebase.initializeApp(cfg); db=firebase.database(); testConnection(); }); }
+    else { firebase.initializeApp(cfg); db=firebase.database(); testConnection(); }
+  } catch(e) { show('cfg-err', 'Firebase error: ' + e.message); }
+}
+
+function testConnection() {
+  const okEl = document.getElementById('cfg-ok');
+  const errEl = document.getElementById('cfg-err');
+  okEl.textContent = '⏳ Connecting...';
+  okEl.style.color = 'var(--muted)';
+  okEl.style.display = 'block';
+  errEl.style.display = 'none';
+
+  let resolved = false;
+  const connRef = db.ref('.info/connected');
+
+  const timeout = setTimeout(() => {
+    if (resolved) return;
+    resolved = true;
+    connRef.off();
+    okEl.style.display = 'none';
+    errEl.textContent = 'Could not connect after 8s. Open the browser console (F12) for error details. Common fixes: (1) No trailing slash on Database URL, (2) Realtime Database must be created in Firebase console, (3) Rules must be published with read/write = true.';
+    errEl.style.display = 'block';
+  }, 8000);
+
+  connRef.on('value', snap => {
+    if (snap.val() === true && !resolved) {
+      resolved = true;
+      clearTimeout(timeout);
+      connRef.off();
+      errEl.style.display = 'none';
+      okEl.textContent = '✓ Connected! You can now host or join drafts.';
+      okEl.style.color = '';
+      okEl.style.display = 'block';
+    }
+  });
+}
+
+function clearConfig() {
+  localStorage.removeItem('draft_firebase_config');
+  db = null;
+  show('cfg-ok', 'Config cleared.'); hide('cfg-err');
+  document.getElementById('cfg-ok').textContent = 'Config cleared.';
+}
+
+function prefillConfigForm() {
+  const cfg = getSavedConfig();
+  if (!cfg) return;
+  const fields = ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'];
+  for (const f of fields) { const el = document.getElementById('cfg-'+f); if(el && cfg[f]) el.value = cfg[f]; }
+}
+
+// ============================================================
+// SCREEN MANAGEMENT
+// ============================================================
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(name) || document.getElementById(name+'-screen');
+  if (el) el.classList.add('active');
+}
+
+function showTutorial() { document.getElementById('modal-tutorial').classList.add('active'); }
+function closeTutorial() { document.getElementById('modal-tutorial').classList.remove('active'); }
+
+// ============================================================
+// HOST FLOW
+// ============================================================
+function goHost() {
+  if (!tryInitFirebase()) {
+    const el = document.getElementById('splash-err');
+    el.textContent = 'Firebase not configured. Click "Configure Firebase" first.';
+    el.style.display = 'block';
+    setTimeout(()=>el.style.display='none', 4000);
+    return;
+  }
+  // Generate room code and show setup
+  const code = genCode();
+  local.roomCode = code;
+  document.getElementById('room-code-display').textContent = code;
+  document.getElementById('lobby-code-display').textContent = code;
+  showScreen('host-setup');
+}
+
+function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('draft-textarea').value = e.target.result;
+    previewDraftList();
+  };
+  reader.readAsText(file);
+}
+
+function loadSampleList() {
+  document.getElementById('draft-textarea').value =
+`Charizard,Fire,Flying,534
+Blastoise,Water,,530
+Venusaur,Grass,Poison,525
+Pikachu,Electric,,320
+Mewtwo,Psychic,,680
+Gengar,Ghost,Poison,500
+Snorlax,Normal,,540
+Dragonite,Dragon,Flying,600
+Lapras,Water,Ice,535
+Alakazam,Psychic,,500
+Machamp,Fighting,,505
+Gyarados,Water,Flying,540
+Arcanine,Fire,,555
+Raichu,Electric,,485
+Nidoking,Poison,Ground,505
+Clefable,Fairy,,483
+Eevee,Normal,,325
+Slowbro,Water,Psychic,490
+Jolteon,Electric,,525
+Flareon,Fire,,525`;
+  previewDraftList();
+}
+
+function parseDraftList(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const list = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(p => p.trim());
+    if (parts.length < 2) continue;
+    const name = parts[0];
+    const type1 = (parts[1] || '').toLowerCase();
+    const type2 = (parts[2] || '').toLowerCase() || null;
+    const bst = parseInt(parts[3]) || 0;
+    if (name && type1) list.push({ name, type1, type2, bst });
+  }
+  return list;
+}
+
+function previewDraftList() {
+  const text = document.getElementById('draft-textarea').value;
+  const list = parseDraftList(text);
+  const errEl = document.getElementById('draft-err');
+  const previewEl = document.getElementById('draft-preview');
+  const countEl = document.getElementById('draft-count');
+  if (!list.length) {
+    errEl.textContent = 'No valid Pokémon found. Check format: Name,Type1,Type2,BST';
+    errEl.style.display = 'block';
+    previewEl.style.display = 'none';
+    countEl.textContent = '0 Pokémon loaded';
+    return;
+  }
+  errEl.style.display = 'none';
+  countEl.textContent = `${list.length} Pokémon loaded`;
+  previewEl.style.display = 'block';
+  previewEl.innerHTML = list.map((p, i) => `
+    <div class="dlp-row">
+      <span class="dlp-num">${i+1}</span>
+      <span class="dlp-name">${esc(p.name)}</span>
+      <span class="type-badge t-${p.type1}" style="font-size:9px;padding:1px 5px">${p.type1}</span>
+      ${p.type2 ? `<span class="type-badge t-${p.type2}" style="font-size:9px;padding:1px 5px">${p.type2}</span>` : ''}
+      ${p.bst ? `<span class="dlp-bst">${p.bst}</span>` : ''}
+    </div>`).join('');
+}
+
+async function openLobby() {
+  if (!db) { show('setup-err','Firebase not initialized'); return; }
+  const budget = parseInt(document.getElementById('s-budget').value) || 1000;
+  const maxTeam = parseInt(document.getElementById('s-maxteam').value) || 6;
+  const hostName = document.getElementById('s-hostname').value.trim() || 'Host';
+  const hostCanBid = document.getElementById('s-hostbid').value === '1';
+  const draftText = document.getElementById('draft-textarea').value;
+  const draftList = parseDraftList(draftText);
+  if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
+
+  const btn = document.getElementById('open-lobby-btn');
+  btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Creating Room...';
+
+  const hostSecret = genId();
+  localStorage.setItem(`draft_host_${local.roomCode}`, hostSecret);
+  localStorage.setItem('draft_room', local.roomCode);
+  localStorage.setItem('draft_name', hostName);
+  local.name = hostName;
+  local.isHost = true;
+
+  const roomData = {
+    hostSecret,
+    phase: 'lobby',
+    settings: { budget, maxTeamSize: maxTeam, hostCanBid },
+    draftList,
+    draftIdx: 0,
+    roundNum: 1,
+    currentAuction: null,
+    players: {},
+    log: {}
+  };
+
+  // Add host as player if they can bid
+  if (hostCanBid) {
+    roomData.players[local.playerId] = {
+      name: hostName, budget, start: budget, roster: [],
+      isHost: true, color: PLAYER_COLORS[0], joinedAt: Date.now()
+    };
+  }
+
+  try {
+    await db.ref(`rooms/${local.roomCode}`).set(roomData);
+    subscribeRoom(local.roomCode);
+    showScreen('lobby');
+  } catch(e) {
+    show('setup-err', 'Failed to create room: ' + e.message);
+    btn.disabled = false; btn.innerHTML = 'Open Lobby ▶';
+  }
+}
+
+// ============================================================
+// JOIN FLOW
+// ============================================================
+function goJoin() {
+  if (!tryInitFirebase()) {
+    const el = document.getElementById('splash-err');
+    el.textContent = 'Firebase not configured. Click "Configure Firebase" first.';
+    el.style.display = 'block';
+    setTimeout(()=>el.style.display='none', 4000);
+    return;
+  }
+  showScreen('join');
+  setTimeout(()=>document.getElementById('join-code').focus(), 100);
+}
+
+async function doJoin() {
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  const name = document.getElementById('join-name').value.trim();
+  const errEl = document.getElementById('join-err');
+  const btn = document.getElementById('join-btn');
+  if (!code || code.length < 4) { errEl.textContent='Enter a valid room code'; errEl.style.display='block'; return; }
+  if (!name) { errEl.textContent='Enter your name'; errEl.style.display='block'; return; }
+  errEl.style.display='none';
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> Joining...';
+
+  try {
+    const snap = await db.ref(`rooms/${code}`).once('value');
+    if (!snap.exists()) throw new Error('Room not found. Check the code and try again.');
+    const room = snap.val();
+    if (room.phase === 'results') throw new Error('This draft has already ended.');
+
+    // Count non-host players
+    const playerList = Object.values(room.players || {});
+    const colorIdx = playerList.length % PLAYER_COLORS.length;
+
+    // Check if reconnecting
+    const existing = room.players?.[local.playerId];
+    const playerData = existing ? { ...existing, name } : {
+      name, budget: room.settings.budget, start: room.settings.budget,
+      roster: [], isHost: false, color: PLAYER_COLORS[colorIdx], joinedAt: Date.now()
+    };
+
+    await db.ref(`rooms/${code}/players/${local.playerId}`).set(playerData);
+    localStorage.setItem('draft_room', code);
+    localStorage.setItem('draft_name', name);
+    local.roomCode = code;
+    local.name = name;
+    local.isHost = false;
+    subscribeRoom(code);
+
+    if (room.phase === 'lobby') showScreen('lobby');
+    // else render() will handle the right screen
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.innerHTML = 'Join Room →';
+  }
+}
+
+// ============================================================
+// FIREBASE SUBSCRIPTION
+// ============================================================
+function subscribeRoom(code) {
+  if (roomRef) roomRef.off();
+  roomRef = db.ref(`rooms/${code}`);
+  local.roomCode = code;
+
+  roomRef.on('value', snap => {
+    if (!snap.exists()) { backToSplash(); return; }
+    roomState = snap.val();
+    const savedSecret = localStorage.getItem(`draft_host_${code}`);
+    local.isHost = !!(savedSecret && roomState.hostSecret === savedSecret);
+    render();
+  });
+}
+
+// ============================================================
+// MAIN RENDER
+// ============================================================
+function render() {
+  if (!roomState) return;
+  const phase = roomState.phase;
+  if (phase === 'lobby') {
+    showScreen('lobby');
+    renderLobby();
+  } else if (['bidding','sold','unsold'].includes(phase)) {
+    showScreen('draft');
+    renderDraftHeader();
+    renderSidebarPlayers();
+    renderAuctionCenter();
+    renderLog();
+  } else if (phase === 'results') {
+    showScreen('results');
+    renderResults();
+  }
+  if (local.isHost && phase === 'bidding') {
+    scheduleHostTick();
+  }
+}
+
+// ============================================================
+// LOBBY RENDER
+// ============================================================
+function renderLobby() {
+  const players = Object.entries(roomState.players || {});
+  const codeEl = document.getElementById('lobby-code-display');
+  if (codeEl) codeEl.textContent = local.roomCode;
+
+  const container = document.getElementById('lobby-players');
+  if (container) {
+    container.innerHTML = players.map(([pid, p]) => `
+      <div class="lobby-p${pid === local.playerId ? ' me' : ''}">
+        <div class="lobby-avatar" style="background:${p.color || '#CC0000'}">${(p.name||'?')[0].toUpperCase()}</div>
+        <div class="lobby-pname">${esc(p.name)}</div>
+        <div class="lobby-ptag">${p.isHost ? '👑 Host' : '💰 ' + p.budget + ' coins'}</div>
+      </div>`).join('') + (players.length === 0 ? '<div style="color:var(--muted);font-size:12px;padding:10px">No players yet...</div>' : '');
+  }
+
+  const waitingEl = document.getElementById('lobby-waiting');
+  if (waitingEl) waitingEl.style.display = players.length < 2 ? 'flex' : 'none';
+
+  if (local.isHost) {
+    const hc = document.getElementById('lobby-host-controls');
+    const pm = document.getElementById('lobby-player-msg');
+    if (hc) hc.style.display = 'block';
+    if (pm) pm.style.display = 'none';
+    const startBtn = document.getElementById('start-btn');
+    const nonHostPlayers = players.filter(([,p]) => !p.isHost);
+    if (startBtn) startBtn.disabled = nonHostPlayers.length < 1;
+  } else {
+    const hc = document.getElementById('lobby-host-controls');
+    const pm = document.getElementById('lobby-player-msg');
+    if (hc) hc.style.display = 'none';
+    if (pm) pm.style.display = 'block';
+  }
+}
+
+// ============================================================
+// START DRAFT
+// ============================================================
+async function startDraft() {
+  if (!local.isHost) return;
+  const players = Object.entries(roomState.players || {});
+  const nonHost = players.filter(([,p]) => !p.isHost);
+  if (nonHost.length < 1) { show('lobby-err','Need at least 1 player to start'); return; }
+
+  // Launch first auction
+  await advanceToNextPokemon();
+}
+
+async function advanceToNextPokemon() {
+  if (!local.isHost || !roomState) return;
+  const draftList = roomState.draftList || [];
+  const idx = roomState.draftIdx || 0;
+
+  if (idx >= draftList.length) {
+    // Draft complete
+    await db.ref(`rooms/${local.roomCode}/phase`).set('results');
+    return;
+  }
+
+  const pokemon = draftList[idx];
+  const roundNum = (roomState.roundNum || 0) + (idx === 0 ? 0 : 1);
+
+  const update = {
+    phase: 'bidding',
+    roundNum: idx + 1,
+    draftIdx: idx,
+    currentAuction: {
+      name: pokemon.name,
+      type1: pokemon.type1,
+      type2: pokemon.type2 || null,
+      bst: pokemon.bst || 0,
+      currentBid: 0,
+      currentBidder: null,
+      timerEnd: null,
+      timerStarted: false
+    }
+  };
+
+  addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! (${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`, 'nom');
+  await db.ref(`rooms/${local.roomCode}`).update(update);
+}
+
+// ============================================================
+// DRAFT HEADER
+// ============================================================
+function renderDraftHeader() {
+  const code = local.roomCode || '';
+  const codeEl = document.getElementById('dh-room-code');
+  if (codeEl) codeEl.textContent = code;
+
+  const roundEl = document.getElementById('dh-round');
+  if (roundEl) roundEl.textContent = `Round ${roomState.roundNum || 1}`;
+
+  const progEl = document.getElementById('dh-progress');
+  const total = (roomState.draftList || []).length;
+  const done = roomState.draftIdx || 0;
+  if (progEl) progEl.textContent = `${done}/${total} Pokémon`;
+  const fillEl = document.getElementById('draft-prog-fill');
+  if (fillEl && total) fillEl.style.width = ((done/total)*100)+'%';
+
+  // My budget
+  const myPlayer = roomState.players?.[local.playerId];
+  const budgetEl = document.getElementById('dh-budget');
+  if (budgetEl) {
+    if (myPlayer) { budgetEl.textContent = '💰 ' + myPlayer.budget; budgetEl.style.display = 'inline-block'; }
+    else budgetEl.style.display = 'none';
+  }
+
+  const hostBadge = document.getElementById('dh-host-badge');
+  if (hostBadge) hostBadge.style.display = local.isHost ? 'inline-block' : 'none';
+}
+
+// ============================================================
+// SIDEBAR PLAYERS
+// ============================================================
+function renderSidebarPlayers() {
+  const container = document.getElementById('sidebar-players');
+  if (!container) return;
+  const players = Object.entries(roomState.players || {});
+  const auction = roomState.currentAuction;
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+
+  container.innerHTML = players.map(([pid, p]) => {
+    const pct = Math.round((p.budget / p.start) * 100);
+    const full = (p.roster || []).length >= maxTeam;
+    const leading = auction?.currentBidder === pid;
+    let cls = 'p-card';
+    if (leading) cls += ' is-leading';
+    if (pid === local.playerId) cls += ' is-me';
+    if (full) cls += ' is-full';
+
+    const rosterHtml = (p.roster || []).length > 0 ? `<div class="mini-roster">
+      ${(p.roster || []).slice(-6).map(pk => `
+        <div class="mini-pk mystery" title="${esc(pk.name)} · ${pk.price}🪙">
+          <span class="type-badge t-${pk.type1||'normal'}" style="font-size:8px;padding:1px 4px">${(pk.type1||'?')[0].toUpperCase()}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+    const editBtn = local.isHost ? `<button class="edit-budget-btn" onclick="openEditBudget('${pid}')" title="Edit budget">✏️</button>` : '';
+
+    return `<div class="${cls}">
+      <div class="pc-top">
+        <div class="pc-avatar" style="background:${p.color||'#CC0000'}">${(p.name||'?')[0].toUpperCase()}</div>
+        <div class="pc-name" title="${esc(p.name)}">${esc(p.name)}</div>
+        <div class="pc-badges">
+          ${leading ? '<span class="tag" style="background:rgba(76,175,80,.15);color:#A5D6A7;border-color:rgba(76,175,80,.3)">LEAD</span>' : ''}
+          ${full ? '<span class="tag" style="background:rgba(255,203,5,.08);color:var(--yellow)">FULL</span>' : ''}
+        </div>
+      </div>
+      <div class="budget-bar"><div class="budget-fill${pct<25?' low':''}" style="width:${pct}%"></div></div>
+      <div class="pc-stats">
+        <span>${(p.roster||[]).length}/${maxTeam} caught</span>
+        <div style="display:flex;align-items:center;gap:4px"><span class="pc-coins">${p.budget}</span>${editBtn}</div>
+      </div>
+      ${rosterHtml}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// AUCTION CENTER
+// ============================================================
+function renderAuctionCenter() {
+  const center = document.getElementById('auction-center');
+  if (!center) return;
+  const phase = roomState.phase;
+  if (phase === 'bidding') renderBidding(center);
+  else if (phase === 'sold') renderSold(center);
+  else if (phase === 'unsold') renderUnsold(center);
+}
+
+function renderBidding(el) {
+  const auction = roomState.currentAuction;
+  if (!auction) return;
+  const leader = auction.currentBidder ? roomState.players?.[auction.currentBidder] : null;
+  const myPlayer = roomState.players?.[local.playerId];
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
+
+  // Build mystery card
+  const mysteryCard = `
+    <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}">
+      <div class="mystery-silhouette">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" opacity=".3">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+          <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="12" fill="none" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="7" fill="currentColor"/>
+        </svg>
+        <span style="position:absolute;font-family:var(--fd);font-size:20px;color:var(--muted)">???</span>
+      </div>
+      <div class="types-row">
+        <span class="type-badge t-${auction.type1}">${auction.type1}</span>
+        ${auction.type2 ? `<span class="type-badge t-${auction.type2}">${auction.type2}</span>` : ''}
+      </div>
+      <div class="bst-display">
+        <div class="bst-label">Base Stat Total</div>
+        <span class="bst-num">${auction.bst || '???'}</span>
+      </div>
+      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}</div>` : ''}
+    </div>`;
+
+  // Timer section
+  let timerHtml = '';
+  if (auction.timerEnd) {
+    const remaining = Math.max(0, Math.ceil((auction.timerEnd - Date.now()) / 1000));
+    const pct = Math.min(100, (remaining / DEFAULT_TIMER_SEC) * 100);
+    const cls = remaining <= 10 ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
+    timerHtml = `<div class="timer-wrap">
+      <div class="timer-num ${cls}" id="timer-num">${remaining}</div>
+      <div class="timer-bar-bg"><div class="timer-bar ${cls}" id="timer-bar" style="width:${pct}%"></div></div>
+      <div class="timer-sub" id="timer-sub">${remaining <= SNIPE_PROTECT_SEC ? '⚡ Snipe protection active' : 'seconds remaining'}</div>
+    </div>`;
+  } else {
+    timerHtml = `<div class="timer-waiting">⏳ Timer starts with first bid (${DEFAULT_TIMER_SEC}s)</div>`;
+  }
+
+  // Auction info
+  const infoHtml = `<div class="auction-info">
+    <div class="ai-label">Current High Bid</div>
+    <div class="ai-bid">${auction.currentBid || '—'}</div>
+    ${leader ? `<div class="ai-bidder">🏆 ${esc(leader.name)}</div>` : `<div class="ai-nobid">No bids yet · opens at ${MIN_BID} coins</div>`}
+  </div>`;
+
+  // Bid input for current player
+  let bidHtml = '';
+  if (myPlayer) {
+    const full = (myPlayer.roster || []).length >= maxTeam;
+    const canAfford = myPlayer.budget >= minNext;
+    const alreadyLeading = auction.currentBidder === local.playerId;
+    if (full) {
+      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full (${(myPlayer.roster||[]).length}/${maxTeam})</div></div>`;
+    } else if (!canAfford) {
+      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Need ${minNext} coins · you have ${myPlayer.budget}</div></div>`;
+    } else {
+      const quickAmounts = [minNext, minNext+5, minNext+20, minNext+50, minNext+100].filter(a=>a<=myPlayer.budget);
+      bidHtml = `<div class="bid-area${alreadyLeading ? '' : ' my-turn'}">
+        <div class="ba-top">
+          <div>
+            <div class="ba-name">${esc(myPlayer.name)}${alreadyLeading ? ' <span style="color:var(--green);font-size:11px">— You\'re leading!</span>' : ''}</div>
+            <div class="ba-budget">Budget: <b style="color:var(--yellow)">${myPlayer.budget}</b> coins</div>
+          </div>
+        </div>
+        <div class="bid-input-row">
+          <input type="number" class="bid-field" id="my-bid-input" placeholder="${minNext}"
+            min="${minNext}" max="${myPlayer.budget}" step="${MIN_INCREMENT}"
+            onkeydown="if(event.key==='Enter')submitMyBid()">
+          <button class="btn btn-green" onclick="submitMyBid()" style="padding:10px 16px;font-size:14px;font-weight:900">BID</button>
+        </div>
+        <div class="quick-bids">${quickAmounts.map(a=>`<button class="qb" onclick="setQuickBid(${a})">${a}</button>`).join('')}</div>
+        <div class="bid-hint">Min: <b>${minNext}</b> · Must be a multiple of 5 · Max: ${myPlayer.budget}</div>
+      </div>`;
+    }
+  }
+
+  // Host controls
+  let hostCtrlHtml = '';
+  if (local.isHost) {
+    hostCtrlHtml = `<div class="host-controls">
+      <div class="hc-label"><span class="host-badge">HOST</span> Controls</div>
+      <div class="hc-btns">
+        ${auction.currentBidder ? `<button class="btn btn-yellow btn-sm" onclick="hostForceSell()">🔨 Force Sell</button>` : ''}
+        <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip Pokémon</button>
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML = mysteryCard + infoHtml + timerHtml + bidHtml + hostCtrlHtml;
+  startCountdownDisplay();
+}
+
+function renderSold(el) {
+  const auction = roomState.currentAuction;
+  if (!auction) return;
+  const winner = roomState.players?.[auction.currentBidder];
+
+  el.innerHTML = `
+    <div class="mystery-card sold-card">
+      <div id="reveal-sprite-wrap">
+        <div style="font-family:var(--fd);font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:3px">REVEALED</div>
+      </div>
+      <div class="revealed-name">${esc(auction.name)}</div>
+      <div class="types-row">
+        <span class="type-badge t-${auction.type1}">${auction.type1}</span>
+        ${auction.type2 ? `<span class="type-badge t-${auction.type2}">${auction.type2}</span>` : ''}
+      </div>
+      <div class="bst-display"><div class="bst-label">Base Stat Total</div><span class="bst-num">${auction.bst || '?'}</span></div>
+    </div>
+    <div class="sold-banner">
+      <div class="sold-ttl">🔨 SOLD!</div>
+      <div class="sold-winner">${winner ? esc(winner.name) : '?'} wins ${esc(auction.name)}!</div>
+      <div class="sold-price">For ${auction.currentBid} coins · ${winner?.budget || 0} remaining</div>
+    </div>
+    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
+
+  // Try to load sprite
+  fetchSprite(auction.name);
+}
+
+function renderUnsold(el) {
+  const auction = roomState.currentAuction;
+  if (!auction) return;
+  el.innerHTML = `
+    <div class="mystery-card unsold-card">
+      <div class="mystery-silhouette" style="opacity:.4">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" opacity=".3">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+          <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="12" fill="none" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="7" fill="currentColor"/>
+        </svg>
+        <span style="position:absolute;font-family:var(--fd);font-size:20px;color:var(--muted)">???</span>
+      </div>
+      <div class="types-row">
+        <span class="type-badge t-${auction.type1}">${auction.type1}</span>
+        ${auction.type2 ? `<span class="type-badge t-${auction.type2}">${auction.type2}</span>` : ''}
+      </div>
+      <div class="bst-display"><div class="bst-label">Base Stat Total</div><span class="bst-num">${auction.bst||'?'}</span></div>
+    </div>
+    <div class="unsold-banner">
+      <div class="unsold-ttl">No Sale — Passed</div>
+      <div class="unsold-sub">${local.isHost ? esc(auction.name) + ' goes back into the pool' : 'This Pokémon was skipped'}</div>
+    </div>
+    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
+}
+
+// ============================================================
+// SPRITE FETCH
+// ============================================================
+async function fetchSprite(name) {
+  try {
+    const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${name.toLowerCase().replace(/\s+/g,'-')}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const sprite = d.sprites?.other?.['official-artwork']?.front_default || d.sprites?.front_default;
+    if (!sprite) return;
+    const wrap = document.getElementById('reveal-sprite-wrap');
+    if (wrap) {
+      wrap.innerHTML = `<img src="${sprite}" style="width:120px;height:120px;object-fit:contain;display:block;margin:0 auto 8px" alt="${name}">`;
+    }
+  } catch(e) {}
+}
+
+// ============================================================
+// COUNTDOWN DISPLAY
+// ============================================================
+function startCountdownDisplay() {
+  if (countdownAnimFrame) cancelAnimationFrame(countdownAnimFrame);
+  function tick() {
+    const auction = roomState?.currentAuction;
+    if (!auction?.timerEnd || roomState?.phase !== 'bidding') return;
+    const remaining = Math.max(0, Math.ceil((auction.timerEnd - Date.now()) / 1000));
+    const pct = Math.min(100, (remaining / DEFAULT_TIMER_SEC) * 100);
+    const cls = remaining <= SNIPE_PROTECT_SEC ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
+    const numEl = document.getElementById('timer-num');
+    const barEl = document.getElementById('timer-bar');
+    const subEl = document.getElementById('timer-sub');
+    if (numEl) { numEl.textContent = remaining; numEl.className = `timer-num ${cls}`; }
+    if (barEl) { barEl.style.width = pct + '%'; barEl.className = `timer-bar ${cls}`; }
+    if (subEl) subEl.textContent = remaining <= SNIPE_PROTECT_SEC ? '⚡ Snipe protection active' : 'seconds remaining';
+    countdownAnimFrame = requestAnimationFrame(tick);
+  }
+  countdownAnimFrame = requestAnimationFrame(tick);
+}
+
+// ============================================================
+// HOST TIMER TICK (only runs on host's browser)
+// ============================================================
+function scheduleHostTick() {
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+  if (!local.isHost || roomState?.phase !== 'bidding') return;
+  const auction = roomState?.currentAuction;
+  if (!auction?.timerEnd) return; // no timer yet
+
+  hostTickInterval = setInterval(async () => {
+    if (!roomState || roomState.phase !== 'bidding') { clearInterval(hostTickInterval); return; }
+    const timerEnd = roomState.currentAuction?.timerEnd;
+    if (!timerEnd) { clearInterval(hostTickInterval); return; }
+    if (Date.now() >= timerEnd) {
+      clearInterval(hostTickInterval);
+      await hostForceSell();
+    }
+  }, 500);
+}
+
+// ============================================================
+// BIDDING ACTIONS
+// ============================================================
+function setQuickBid(amount) {
+  const inp = document.getElementById('my-bid-input');
+  if (inp) { inp.value = amount; inp.focus(); }
+}
+
+async function submitMyBid() {
+  const inp = document.getElementById('my-bid-input');
+  const amount = parseInt(inp?.value || '');
+  const myPlayer = roomState?.players?.[local.playerId];
+  const auction = roomState?.currentAuction;
+  if (!myPlayer || !auction) return;
+
+  const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
+  const errMsg = validateBid(amount, auction.currentBid || 0, myPlayer.budget);
+  if (errMsg) { showToast(errMsg, true); if(inp){inp.classList.add('shake');setTimeout(()=>inp.classList.remove('shake'),400);} return; }
+
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  if ((myPlayer.roster || []).length >= maxTeam) { showToast("Your team is full!", true); return; }
+
+  // Calculate new timerEnd with snipe protection
+  let timerEnd = auction.timerEnd;
+  const now = Date.now();
+  if (!timerEnd) {
+    timerEnd = now + DEFAULT_TIMER_SEC * 1000; // first bid starts timer
+  } else {
+    const remaining = timerEnd - now;
+    if (remaining < SNIPE_PROTECT_SEC * 1000) {
+      timerEnd = now + SNIPE_PROTECT_SEC * 1000; // snipe protection
+    }
+  }
+
+  try {
+    await db.ref(`rooms/${local.roomCode}/currentAuction`).update({
+      currentBid: amount,
+      currentBidder: local.playerId,
+      timerEnd,
+      timerStarted: true
+    });
+    addLogEntry(`${esc(myPlayer.name)} bids ${amount}!`, 'bid');
+    if (inp) inp.value = '';
+    scheduleHostTick();
+  } catch(e) { showToast('Bid failed: ' + e.message, true); }
+}
+
+function validateBid(amount, currentBid, myBudget) {
+  if (!amount || isNaN(amount)) return 'Enter a bid amount';
+  const minNext = Math.max(MIN_BID, currentBid + MIN_INCREMENT);
+  if (amount < minNext) return `Minimum bid is ${minNext} coins`;
+  if (amount % MIN_INCREMENT !== 0) return `Bid must be a multiple of ${MIN_INCREMENT} (e.g. ${Math.ceil(amount/MIN_INCREMENT)*MIN_INCREMENT})`;
+  if (amount > myBudget) return `You only have ${myBudget} coins`;
+  return null;
+}
+
+// ============================================================
+// HOST ACTIONS
+// ============================================================
+async function hostForceSell() {
+  if (!local.isHost) return;
+  const auction = roomState?.currentAuction;
+  if (!auction?.currentBidder || roomState?.phase !== 'bidding') return;
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+
+  const winner = roomState.players[auction.currentBidder];
+  if (!winner) return;
+
+  // Deduct budget and add to roster
+  const newBudget = winner.budget - auction.currentBid;
+  const newRoster = [...(winner.roster || []), {
+    name: auction.name, type1: auction.type1, type2: auction.type2,
+    bst: auction.bst, price: auction.currentBid
+  }];
+
+  await db.ref(`rooms/${local.roomCode}`).update({
+    phase: 'sold',
+    [`players/${auction.currentBidder}/budget`]: newBudget,
+    [`players/${auction.currentBidder}/roster`]: newRoster
+  });
+  addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins for ${auction.currentBid} coins!`, 'sold');
+
+  // Check if all teams full
+  const updatedPlayers = { ...roomState.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  const total = (roomState.draftList || []).length;
+  const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
+  const listDone = (roomState.draftIdx || 0) + 1 >= total;
+  if (allFull || listDone) {
+    setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+  }
+}
+
+async function hostSkip() {
+  if (!local.isHost) return;
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+  const auction = roomState?.currentAuction;
+  addLogEntry(`⏭ ${auction?.name || 'Pokémon'} was skipped by host`, 'unsold');
+  await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+}
+
+async function hostNextRound() {
+  if (!local.isHost) return;
+  const nextIdx = (roomState.draftIdx || 0) + 1;
+  await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
+  await advanceToNextPokemon();
+}
+
+// ============================================================
+// LOG
+// ============================================================
+async function addLogEntry(msg, type = 'info') {
+  try {
+    await db.ref(`rooms/${local.roomCode}/log`).push({ msg, type, ts: Date.now() });
+  } catch(e) {}
+}
+
+function renderLog() {
+  const el = document.getElementById('auction-log');
+  if (!el) return;
+  const log = roomState?.log ? Object.values(roomState.log) : [];
+  log.sort((a,b) => (b.ts||0) - (a.ts||0));
+  el.innerHTML = log.slice(0, 40).map(e => `<div class="log-item ${e.type}">${e.msg}</div>`).join('') || '<div style="color:var(--muted);font-size:11px;padding:8px">No activity yet</div>';
+}
+
+// ============================================================
+// EDIT BUDGET
+// ============================================================
+function openEditBudget(playerId) {
+  if (!local.isHost) return;
+  const player = roomState?.players?.[playerId];
+  if (!player) return;
+  editingPlayerId = playerId;
+  document.getElementById('eb-player-name').textContent = player.name;
+  document.getElementById('eb-current').textContent = player.budget;
+  document.getElementById('eb-input').value = player.budget;
+  document.getElementById('eb-err').style.display = 'none';
+  document.getElementById('modal-edit-budget').classList.add('active');
+  setTimeout(() => document.getElementById('eb-input').focus(), 100);
+}
+
+function eb_add(delta) {
+  const inp = document.getElementById('eb-input');
+  const cur = parseInt(inp.value || '0') || (roomState?.players?.[editingPlayerId]?.budget || 0);
+  inp.value = Math.max(0, cur + delta);
+}
+
+async function doEditBudget() {
+  const newBudget = parseInt(document.getElementById('eb-input').value);
+  const errEl = document.getElementById('eb-err');
+  if (isNaN(newBudget) || newBudget < 0) { errEl.textContent='Enter a valid amount (0 or more)'; errEl.style.display='block'; return; }
+  try {
+    await db.ref(`rooms/${local.roomCode}/players/${editingPlayerId}/budget`).set(newBudget);
+    const pName = roomState?.players?.[editingPlayerId]?.name || 'Player';
+    addLogEntry(`💰 Host set ${pName}'s budget to ${newBudget}`, 'info');
+    document.getElementById('modal-edit-budget').classList.remove('active');
+    showToast(`${pName}'s budget updated to ${newBudget}`, false);
+  } catch(e) { errEl.textContent='Failed: ' + e.message; errEl.style.display='block'; }
+}
+
+// ============================================================
+// RESULTS
+// ============================================================
+function renderResults() {
+  const el = document.getElementById('results-content');
+  if (!el) return;
+  const players = Object.entries(roomState.players || {});
+  players.sort((a,b) => (b[1].roster||[]).length - (a[1].roster||[]).length);
+
+  el.innerHTML = players.map(([pid, p], rank) => {
+    const roster = p.roster || [];
+    return `<div class="res-card${rank===0?' winner':''}">
+      ${rank===0 ? '<div style="font-family:var(--fd);font-size:8px;color:var(--yellow);margin-bottom:6px">★ WINNER</div>' : ''}
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="width:24px;height:24px;border-radius:50%;background:${p.color||'#CC0000'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:11px;flex-shrink:0">${(p.name||'?')[0].toUpperCase()}</div>
+        <div class="res-pname" style="margin:0">${esc(p.name)}</div>
+      </div>
+      <div class="res-stats">
+        <span>${roster.length} caught</span>
+        <span>${p.start - p.budget} spent</span>
+        <span>${p.budget} left</span>
+      </div>
+      <div class="roster-grid">
+        ${roster.map(pk => `<div class="res-pk">
+          <div class="types-row res-pk-type" style="justify-content:center;gap:3px;margin-bottom:3px">
+            <span class="type-badge t-${pk.type1}" style="font-size:8px;padding:1px 4px">${pk.type1}</span>
+            ${pk.type2 ? `<span class="type-badge t-${pk.type2}" style="font-size:8px;padding:1px 4px">${pk.type2}</span>` : ''}
+          </div>
+          <div class="res-pk-name">${esc(pk.name)}</div>
+          <div class="res-pk-price">${pk.price}🪙</div>
+        </div>`).join('')}
+        ${!roster.length ? '<div style="color:var(--muted);font-size:11px;grid-column:1/-1;text-align:center;padding:10px">Nothing drafted</div>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const ctrl = document.getElementById('results-host-controls');
+  if (ctrl) ctrl.style.display = local.isHost ? 'flex' : 'none';
+}
+
+async function newDraft() {
+  if (!local.isHost) return;
+  const budget = roomState.settings?.budget || 1000;
+  const players = roomState.players || {};
+  const updates = {};
+  Object.keys(players).forEach(pid => {
+    updates[`players/${pid}/budget`] = budget;
+    updates[`players/${pid}/roster`] = [];
+  });
+  updates.phase = 'lobby';
+  updates.draftIdx = 0;
+  updates.roundNum = 1;
+  updates.currentAuction = null;
+  updates.log = {};
+  await db.ref(`rooms/${local.roomCode}`).update(updates);
+  showScreen('lobby');
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function copyRoomCode() {
+  const code = local.roomCode;
+  if (!code) return;
+  navigator.clipboard?.writeText(code).then(() => showToast('Room code copied!', false)).catch(() => showToast(code, false));
+}
+
+function backToSplash() {
+  if (roomRef) { roomRef.off(); roomRef = null; }
+  roomState = null; local.roomCode = null; local.isHost = false;
+  localStorage.removeItem('draft_room');
+  showScreen('splash');
+}
+
+function genId() { return Math.random().toString(36).substr(2, 12) + Date.now().toString(36); }
+function genCode() { return Math.random().toString(36).substr(2, 6).toUpperCase(); }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function show(id, msg) { const e=document.getElementById(id); if(e){e.textContent=msg||'';e.style.display='block';} }
+function hide(id) { const e=document.getElementById(id); if(e)e.style.display='none'; }
+
+let toastTimer;
+function showToast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  // Prefill config form if saved
+  prefillConfigForm();
+
+  // Try to restore session
+  const savedRoom = localStorage.getItem('draft_room');
+  if (savedRoom && tryInitFirebase()) {
+    local.roomCode = savedRoom;
+    local.name = localStorage.getItem('draft_name') || 'Player';
+    const hostSecret = localStorage.getItem(`draft_host_${savedRoom}`);
+    local.isHost = !!hostSecret;
+    subscribeRoom(savedRoom);
+  } else {
+    showScreen('splash');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
