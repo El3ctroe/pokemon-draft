@@ -205,6 +205,15 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 .bid-area{width:100%;max-width:420px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:14px}
 .bid-area.my-turn{border-color:rgba(255,203,5,.4)}
 .bid-area.cant-bid{opacity:.5}
+.done-badge{display:inline-block;background:rgba(120,120,120,.2);border:1px solid rgba(120,120,120,.4);color:var(--muted);border-radius:5px;font-size:10px;font-weight:700;padding:2px 8px;letter-spacing:.5px}
+.p-card.is-done{opacity:.55;border-color:rgba(120,120,120,.3)!important}
+.btn-done{background:rgba(120,120,120,.15);border:1.5px solid rgba(120,120,120,.4);color:var(--muted);font-size:13px;font-weight:700;border-radius:8px;padding:9px 16px;cursor:pointer;width:100%;margin-top:8px;transition:all .15s;font-family:var(--fb)}
+.btn-done:hover{border-color:rgba(255,68,68,.5);color:var(--red2);background:rgba(204,0,0,.08)}
+.btn-undo-done{background:rgba(255,203,5,.08);border:1.5px solid rgba(255,203,5,.3);color:var(--yellow);font-size:12px;font-weight:700;border-radius:8px;padding:7px 14px;cursor:pointer;width:100%;margin-top:6px;transition:all .15s;font-family:var(--fb)}
+.btn-undo-done:hover{background:rgba(255,203,5,.15);border-color:var(--yellow)}
+.done-status-wrap{background:rgba(120,120,120,.08);border:1.5px solid rgba(120,120,120,.25);border-radius:10px;padding:12px 14px;width:100%;max-width:420px;text-align:center}
+.done-counter{font-size:12px;color:var(--muted);margin-bottom:6px}
+.done-pips{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
 .ba-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .ba-name{font-weight:900;font-size:14px}
 .ba-budget{font-size:11px;color:var(--muted)}
@@ -979,6 +988,7 @@ function render() {
   }
   if (local.isHost && phase === 'bidding') {
     scheduleHostTick();
+    checkAllDone();
   }
 }
 
@@ -1059,7 +1069,8 @@ async function advanceToNextPokemon() {
       currentBidder: null,
       timerEnd: null,
       timerStarted: false,
-      spriteUrl: null
+      spriteUrl: null,
+      doneBidding: null
     }
   };
 
@@ -1114,10 +1125,13 @@ function renderSidebarPlayers() {
     const pct = Math.round((p.budget / p.start) * 100);
     const full = (p.roster || []).length >= maxTeam;
     const leading = auction?.currentBidder === pid;
+    const doneBidding = auction?.doneBidding || {};
+    const isDone = !leading && !!doneBidding[pid];
     let cls = 'p-card';
     if (leading) cls += ' is-leading';
     if (pid === local.playerId) cls += ' is-me';
     if (full) cls += ' is-full';
+    if (isDone) cls += ' is-done';
 
     const rosterHtml = (p.roster || []).length > 0 ? `<div class="mini-roster">
       ${(p.roster || []).slice(-6).map(pk => `
@@ -1134,6 +1148,7 @@ function renderSidebarPlayers() {
         <div class="pc-name" title="${esc(p.name)}">${esc(p.name)}</div>
         <div class="pc-badges">
           ${leading ? '<span class="tag" style="background:rgba(76,175,80,.15);color:#A5D6A7;border-color:rgba(76,175,80,.3)">LEAD</span>' : ''}
+          ${isDone ? '<span class="done-badge">DONE</span>' : ''}
           ${full ? '<span class="tag" style="background:rgba(255,203,5,.08);color:var(--yellow)">FULL</span>' : ''}
         </div>
       </div>
@@ -1169,6 +1184,20 @@ function renderBidding(el) {
   const myPlayer = roomState.players?.[local.playerId];
   const maxTeam = roomState.settings?.maxTeamSize || 6;
   const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
+  const doneBidding = auction.doneBidding || {};
+  const iAmDone = !!doneBidding[local.playerId];
+  const iAmLeading = auction.currentBidder === local.playerId;
+
+  // Count who's done vs eligible (can afford, not full, not leader)
+  const players = roomState.players || {};
+  const eligibleNonLeaders = Object.entries(players).filter(([pid, p]) => {
+    if (pid === auction.currentBidder) return false; // leader excluded
+    if ((p.roster || []).length >= maxTeam) return false;
+    if (p.budget < minNext) return false;
+    return true;
+  });
+  const doneCount = eligibleNonLeaders.filter(([pid]) => doneBidding[pid]).length;
+  const totalEligible = eligibleNonLeaders.length;
 
   // Mystery card
   const mysteryCard = `
@@ -1215,22 +1244,48 @@ function renderBidding(el) {
     ${leader ? `<div class="ai-bidder">🏆 ${esc(leader.name)}</div>` : `<div class="ai-nobid">No bids yet · opens at ${MIN_BID} coins</div>`}
   </div>`;
 
+  // Done bidding status panel (shown when at least one bid exists)
+  let doneStatusHtml = '';
+  if (auction.currentBidder && totalEligible > 0) {
+    const pips = eligibleNonLeaders.map(([pid, p]) => {
+      const done = !!doneBidding[pid];
+      return `<span style="background:${done ? 'rgba(120,120,120,.35)' : 'rgba(255,203,5,.15)'};border:1px solid ${done ? 'rgba(120,120,120,.4)' : 'rgba(255,203,5,.35)'};color:${done ? 'var(--muted)' : 'var(--yellow)'};border-radius:5px;font-size:10px;font-weight:700;padding:3px 8px;white-space:nowrap">${done ? '✓ ' : ''}${esc(p.name)}</span>`;
+    }).join('');
+    doneStatusHtml = `<div class="done-status-wrap">
+      <div class="done-counter">${doneCount === totalEligible ? '✅ All done — auto-selling...' : `${doneCount} / ${totalEligible} done bidding`}</div>
+      <div class="done-pips">${pips}</div>
+    </div>`;
+  }
+
   // Bid input
   let bidHtml = '';
   if (myPlayer) {
     const full = (myPlayer.roster || []).length >= maxTeam;
     const canAfford = myPlayer.budget >= minNext;
-    const alreadyLeading = auction.currentBidder === local.playerId;
     if (full) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full (${(myPlayer.roster||[]).length}/${maxTeam})</div></div>`;
     } else if (!canAfford) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Can't afford min bid of ${minNext} · you have ${myPlayer.budget}</div></div>`;
+    } else if (iAmLeading) {
+      // Leader just sees they're winning — no done button
+      bidHtml = `<div class="bid-area" style="border-color:rgba(76,175,80,.4);text-align:center;padding:14px">
+        <div style="color:var(--green);font-weight:900;font-size:15px;margin-bottom:4px">🏆 You're leading!</div>
+        <div style="font-size:12px;color:var(--muted)">Budget: <b style="color:var(--yellow)">${myPlayer.budget}</b> · Bid: <b style="color:var(--yellow)">${auction.currentBid}</b></div>
+      </div>`;
+    } else if (iAmDone) {
+      // Player marked done — show undo
+      bidHtml = `<div class="bid-area" style="border-color:rgba(120,120,120,.3);text-align:center;padding:14px">
+        <div style="font-size:22px;margin-bottom:5px">🙅</div>
+        <div style="font-weight:900;font-size:14px;color:var(--muted);margin-bottom:3px">Done bidding</div>
+        <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">${esc(myPlayer.name)} · ${myPlayer.budget} coins left</div>
+        <button class="btn-undo-done" onclick="undoDoneBidding()">↩ Undo — I want to bid</button>
+      </div>`;
     } else {
       const quickAmounts = [minNext, minNext+5, minNext+20, minNext+50, minNext+100].filter(a => a <= myPlayer.budget);
-      bidHtml = `<div class="bid-area${alreadyLeading ? '' : ' my-turn'}">
+      bidHtml = `<div class="bid-area my-turn">
         <div class="ba-top">
           <div>
-            <div class="ba-name">${esc(myPlayer.name)}${alreadyLeading ? ' <span style="color:var(--green);font-size:11px">— You\'re leading!</span>' : ''}</div>
+            <div class="ba-name">${esc(myPlayer.name)}</div>
             <div class="ba-budget">Budget: <b style="color:var(--yellow)">${myPlayer.budget}</b> coins</div>
           </div>
         </div>
@@ -1242,6 +1297,7 @@ function renderBidding(el) {
         </div>
         <div class="quick-bids">${quickAmounts.map(a=>`<button class="qb" onclick="setQuickBid(${a})">${a}</button>`).join('')}</div>
         <div class="bid-hint">Min: <b>${minNext}</b> · Must be a multiple of ${MIN_INCREMENT} · Max: ${myPlayer.budget}</div>
+        ${auction.currentBidder ? `<button class="btn-done" onclick="markDoneBidding()">🙅 Done Bidding</button>` : ''}
       </div>`;
     }
   }
@@ -1253,13 +1309,13 @@ function renderBidding(el) {
       <div class="hc-label"><span class="host-badge">HOST</span> Controls</div>
       <div class="hc-btns">
         ${auction.currentBidder ? `<button class="btn btn-yellow btn-sm" onclick="hostForceSell()">🔨 Force Sell</button>` : ''}
-        <button class="btn btn-sm" style="background:#9B59B6;color:#fff" onclick="hostStartBlindBid()">🎭 Switch to Blind Bid</button>
+        <button class="btn btn-sm" style="background:#9B59B6;color:#fff" onclick="hostStartBlindBid()">🎭 Blind Bid</button>
         <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip</button>
       </div>
     </div>`;
   }
 
-  el.innerHTML = mysteryCard + infoHtml + timerHtml + bidHtml + hostCtrlHtml;
+  el.innerHTML = mysteryCard + infoHtml + timerHtml + doneStatusHtml + bidHtml + hostCtrlHtml;
   startCountdownDisplay();
 }
 
@@ -1525,12 +1581,59 @@ async function submitMyBid() {
       currentBid: amount,
       currentBidder: local.playerId,
       timerEnd,
-      timerStarted: true
+      timerStarted: true,
+      [`doneBidding/${local.playerId}`]: null  // clear own done status when bidding
     });
     addLogEntry(`${esc(myPlayer.name)} bids ${amount}!`, 'bid');
     if (inp) inp.value = '';
     scheduleHostTick();
   } catch(e) { showToast('Bid failed: ' + e.message, true); }
+}
+
+async function markDoneBidding() {
+  if (!local.playerId || !local.roomCode) return;
+  const auction = roomState?.currentAuction;
+  if (!auction?.currentBidder) return; // no bids yet, nothing to be done with
+  if (auction.currentBidder === local.playerId) return; // leader can't mark done
+  try {
+    await db.ref(`rooms/${local.roomCode}/currentAuction/doneBidding/${local.playerId}`).set(true);
+    checkAllDone();
+  } catch(e) { showToast('Error: ' + e.message, true); }
+}
+
+async function undoDoneBidding() {
+  if (!local.playerId || !local.roomCode) return;
+  try {
+    await db.ref(`rooms/${local.roomCode}/currentAuction/doneBidding/${local.playerId}`).remove();
+  } catch(e) { showToast('Error: ' + e.message, true); }
+}
+
+async function checkAllDone() {
+  // Only host runs the auto-sell check to avoid race conditions
+  if (!local.isHost) return;
+  // Small delay to let Firebase propagate the latest done state
+  await new Promise(r => setTimeout(r, 300));
+  const snap = await db.ref(`rooms/${local.roomCode}`).once('value');
+  const fresh = snap.val();
+  if (!fresh || fresh.phase !== 'bidding') return;
+  const auction = fresh.currentAuction;
+  if (!auction?.currentBidder) return;
+  const players = fresh.players || {};
+  const maxTeam = fresh.settings?.maxTeamSize || 6;
+  const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
+  const doneBidding = auction.doneBidding || {};
+  const eligibleNonLeaders = Object.entries(players).filter(([pid, p]) => {
+    if (pid === auction.currentBidder) return false;
+    if ((p.roster || []).length >= maxTeam) return false;
+    if (p.budget < minNext) return false;
+    return true;
+  });
+  if (eligibleNonLeaders.length === 0) return; // no one else can bid anyway
+  const allDone = eligibleNonLeaders.every(([pid]) => doneBidding[pid]);
+  if (allDone) {
+    addLogEntry('✅ All players done bidding — auto-selling!', 'info');
+    await hostForceSell();
+  }
 }
 
 function validateBid(amount, currentBid, myBudget) {
