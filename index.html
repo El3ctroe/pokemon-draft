@@ -451,6 +451,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <span id="dh-progress" style="font-size:10px;color:var(--muted2)"></span>
     <div class="dh-right">
       <span class="budget-chip" id="dh-budget" style="display:none"></span>
+      <button id="dh-end-draft-btn" class="btn btn-outline-red btn-sm" style="display:none;font-size:11px" onclick="hostEndDraftToLobby()">⏹ End Draft</button>
       <span id="dh-host-badge" style="display:none" class="host-badge">HOST</span>
     </div>
   </div>
@@ -1033,11 +1034,13 @@ async function advanceToNextPokemon() {
       currentBid: 0,
       currentBidder: null,
       timerEnd: null,
-      timerStarted: false
+      timerStarted: false,
+      spriteUrl: null
     }
   };
 
   addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! (${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`, 'nom');
+  spriteFetchInProgress = false;
   await db.ref(`rooms/${local.roomCode}`).update(update);
 }
 
@@ -1069,6 +1072,8 @@ function renderDraftHeader() {
 
   const hostBadge = document.getElementById('dh-host-badge');
   if (hostBadge) hostBadge.style.display = local.isHost ? 'inline-block' : 'none';
+  const endBtn = document.getElementById('dh-end-draft-btn');
+  if (endBtn) endBtn.style.display = local.isHost ? 'inline-flex' : 'none';
 }
 
 // ============================================================
@@ -1337,11 +1342,14 @@ function renderSold(el) {
   const auction = roomState.currentAuction;
   if (!auction) return;
   const winner = roomState.players?.[auction.currentBidder];
+  const sprite = auction.spriteUrl;
 
   el.innerHTML = `
     <div class="mystery-card sold-card">
       <div id="reveal-sprite-wrap">
-        <div style="font-family:var(--fd);font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:3px">REVEALED</div>
+        ${sprite
+          ? `<img src="${sprite}" style="width:140px;height:140px;object-fit:contain;display:block;margin:0 auto 6px;animation:revealPop .4s ease-out" alt="${esc(auction.name)}">`
+          : `<div style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><div class="spinner"></div></div>`}
       </div>
       <div class="revealed-name">${esc(auction.name)}</div>
       <div class="types-row">
@@ -1353,28 +1361,27 @@ function renderSold(el) {
     <div class="sold-banner">
       <div class="sold-ttl">🔨 SOLD!</div>
       <div class="sold-winner">${winner ? esc(winner.name) : '?'} wins ${esc(auction.name)}!</div>
-      <div class="sold-price">For ${auction.currentBid} coins · ${winner?.budget || 0} remaining</div>
+      <div class="sold-price">For ${auction.currentBid} coins · ${winner?.budget ?? 0} remaining</div>
     </div>
     ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
 
-  // Try to load sprite
-  fetchSprite(auction.name);
+  // If no sprite yet, fetch and store it in Firebase so all clients get it
+  if (!sprite) fetchAndStoreSprite(auction.name);
 }
 
 function renderUnsold(el) {
   const auction = roomState.currentAuction;
   if (!auction) return;
+  const sprite = auction.spriteUrl;
+
   el.innerHTML = `
     <div class="mystery-card unsold-card">
-      <div class="mystery-silhouette" style="opacity:.4">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" opacity=".3">
-          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
-          <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="3"/>
-          <circle cx="50" cy="50" r="12" fill="none" stroke="currentColor" stroke-width="3"/>
-          <circle cx="50" cy="50" r="7" fill="currentColor"/>
-        </svg>
-        <span style="position:absolute;font-family:var(--fd);font-size:20px;color:var(--muted)">???</span>
+      <div id="reveal-sprite-wrap">
+        ${sprite
+          ? `<img src="${sprite}" style="width:140px;height:140px;object-fit:contain;display:block;margin:0 auto 6px;opacity:.7;animation:revealPop .4s ease-out" alt="${esc(auction.name)}">`
+          : `<div style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><div class="spinner"></div></div>`}
       </div>
+      <div class="revealed-name" style="color:var(--muted)">${esc(auction.name)}</div>
       <div class="types-row">
         <span class="type-badge t-${auction.type1}">${auction.type1}</span>
         ${auction.type2 ? `<span class="type-badge t-${auction.type2}">${auction.type2}</span>` : ''}
@@ -1383,26 +1390,31 @@ function renderUnsold(el) {
     </div>
     <div class="unsold-banner">
       <div class="unsold-ttl">No Sale — Passed</div>
-      <div class="unsold-sub">${local.isHost ? esc(auction.name) + ' goes back into the pool' : 'This Pokémon was skipped'}</div>
+      <div class="unsold-sub">${esc(auction.name)} was skipped</div>
     </div>
     ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
+
+  if (!sprite) fetchAndStoreSprite(auction.name);
 }
 
 // ============================================================
-// SPRITE FETCH
+// SPRITE FETCH — stores in Firebase so all clients see it instantly
 // ============================================================
-async function fetchSprite(name) {
+let spriteFetchInProgress = false;
+async function fetchAndStoreSprite(name) {
+  if (spriteFetchInProgress) return;
+  spriteFetchInProgress = true;
   try {
-    const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${name.toLowerCase().replace(/\s+/g,'-')}`);
-    if (!r.ok) return;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${slug}`);
+    if (!r.ok) { spriteFetchInProgress = false; return; }
     const d = await r.json();
     const sprite = d.sprites?.other?.['official-artwork']?.front_default || d.sprites?.front_default;
-    if (!sprite) return;
-    const wrap = document.getElementById('reveal-sprite-wrap');
-    if (wrap) {
-      wrap.innerHTML = `<img src="${sprite}" style="width:120px;height:120px;object-fit:contain;display:block;margin:0 auto 8px" alt="${name}">`;
+    if (sprite && local.roomCode) {
+      await db.ref(`rooms/${local.roomCode}/currentAuction/spriteUrl`).set(sprite);
     }
   } catch(e) {}
+  spriteFetchInProgress = false;
 }
 
 // ============================================================
@@ -1563,6 +1575,18 @@ async function hostSkip() {
   const auction = roomState?.currentAuction;
   addLogEntry(`⏭ ${auction?.name || 'Pokémon'} was skipped by host`, 'unsold');
   await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+}
+
+async function hostEndDraftToLobby() {
+  if (!local.isHost) return;
+  if (!confirm('End the draft and return everyone to the lobby? Rosters and budgets will be kept.')) return;
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+  await db.ref(`rooms/${local.roomCode}`).update({
+    phase: 'lobby',
+    currentAuction: null,
+    blindBids: null
+  });
+  addLogEntry('⏹ Host ended the draft — returning to lobby.', 'info');
 }
 
 async function hostNextRound() {
