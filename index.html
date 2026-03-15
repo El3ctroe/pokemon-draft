@@ -406,12 +406,9 @@ input:focus,textarea:focus{border-color:var(--yellow)}
           </select>
           <div class="hint">Shuffle the Pokémon list?</div>
         </div>
-        <div class="field-grp"><label class="lbl">After Teams Full</label>
-          <select id="s-replacement" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
-            <option value="0">End draft</option>
-            <option value="1">Replacement mode</option>
-          </select>
-          <div class="hint">Continue drafting as replacements? (No BST shown)</div>
+        <div class="field-grp"><label class="lbl">Replacement Picks</label>
+          <input type="number" id="s-replacement" value="0" min="0" max="999" placeholder="0">
+          <div class="hint">Last N Pokémon are replacements (0 = none). No BST shown. Optional to buy.</div>
         </div>
       </div>
     </div>
@@ -855,7 +852,7 @@ async function openLobby() {
   const hostName = document.getElementById('s-hostname').value.trim() || 'Host';
   const hostCanBid = document.getElementById('s-hostbid').value === '1';
   const randomizeOrder = document.getElementById('s-randomize').value === '1';
-  const replacementMode = document.getElementById('s-replacement').value === '1';
+  const replacementCount = Math.max(0, parseInt(document.getElementById('s-replacement').value) || 0);
   const draftText = document.getElementById('draft-textarea').value;
   let draftList = parseDraftList(draftText);
   if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
@@ -880,7 +877,7 @@ async function openLobby() {
   const roomData = {
     hostSecret,
     phase: 'lobby',
-    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementMode },
+    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementCount },
     draftList,
     draftIdx: 0,
     roundNum: 1,
@@ -1062,18 +1059,17 @@ async function advanceToNextPokemon() {
   if (!local.isHost || !roomState) return;
   const draftList = roomState.draftList || [];
   const idx = roomState.draftIdx || 0;
+  const total = draftList.length;
+  const replacementCount = roomState.settings?.replacementCount || 0;
 
-  if (idx >= draftList.length) {
+  if (idx >= total) {
     await db.ref(`rooms/${local.roomCode}/phase`).set('results');
     return;
   }
 
   const pokemon = draftList[idx];
-  const maxTeam = roomState.settings?.maxTeamSize || 6;
-  const replacementMode = roomState.settings?.replacementMode || false;
-  const players = roomState.players || {};
-  const allFull = Object.values(players).every(p => (p.roster || []).length >= maxTeam);
-  const isReplacement = replacementMode && allFull;
+  // A pick is a replacement if it falls in the last `replacementCount` slots of the list
+  const isReplacement = replacementCount > 0 && idx >= (total - replacementCount);
 
   const update = {
     phase: 'bidding',
@@ -1090,14 +1086,22 @@ async function advanceToNextPokemon() {
       timerStarted: false,
       spriteUrl: null,
       doneBidding: null,
-      isReplacement: isReplacement || false
+      isReplacement: isReplacement
     }
   };
 
   const modeLabel = isReplacement ? '⚡ REPLACEMENT ROUND — No BST shown!' : `(${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`;
   addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! ${modeLabel}`, 'nom');
   spriteFetchInProgress = false;
+
+  // Replacement rounds start the timer immediately (no bid required to start it)
+  if (isReplacement) {
+    update.currentAuction.timerEnd = Date.now() + DEFAULT_TIMER_SEC * 1000;
+    update.currentAuction.timerStarted = true;
+  }
+
   await db.ref(`rooms/${local.roomCode}`).update(update);
+  if (isReplacement) scheduleHostTick();
 }
 
 // ============================================================
@@ -1585,6 +1589,12 @@ async function confirmReplacement(dropIdx) {
       [`players/${pid}/roster`]: roster
     });
     addLogEntry(`🔄 ${esc(winner.name)} dropped ${esc(dropped.name)} and kept ${esc(rw.name)}!`, 'sold');
+    // Check if this was the last pick
+    const total = (roomState.draftList || []).length;
+    const listDone = (roomState.draftIdx || 0) + 1 >= total;
+    if (listDone) {
+      setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+    }
   } catch(e) {
     showToast('Error: ' + e.message, true);
   }
@@ -1612,6 +1622,9 @@ async function hostForceReplace() {
       [`players/${pid}/roster`]: roster
     });
     addLogEntry(`🔄 Host forced replacement: ${esc(winner.name)} dropped ${esc(dropped.name)}, kept ${esc(rw.name)}`, 'sold');
+    const total = (roomState.draftList || []).length;
+    const listDone = (roomState.draftIdx || 0) + 1 >= total;
+    if (listDone) setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
   } catch(e) { showToast('Error: ' + e.message, true); }
 }
 let spriteFetchInProgress = false;
@@ -1795,8 +1808,16 @@ async function hostForceSell() {
 
   if (!fresh) return;
   const auction = fresh.currentAuction;
-  if (!auction?.currentBidder) { showToast('No current bidder to sell to', true); return; }
   if (fresh.phase !== 'bidding') return; // already resolved
+
+  // If no bidder: replacement rounds auto-skip, normal rounds just ignore
+  if (!auction?.currentBidder) {
+    if (auction?.isReplacement) {
+      addLogEntry(`⏭ ${auction.name} — no bids, replacement skipped`, 'unsold');
+      await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+    }
+    return;
+  }
 
   const winner = fresh.players?.[auction.currentBidder];
   if (!winner) { showToast('Winner player not found', true); return; }
@@ -1814,9 +1835,11 @@ async function hostForceSell() {
 
   try {
     const isReplacement = auction.isReplacement || false;
+    const total = (fresh.draftList || []).length;
+    const listDone = (fresh.draftIdx || 0) + 1 >= total;
 
     if (isReplacement) {
-      // Don't add to roster yet — go to replacing phase so winner picks what to drop
+      // Replacement: go to replacing phase so winner picks what to drop
       await db.ref(`rooms/${local.roomCode}`).update({
         phase: 'replacing',
         replacingPlayer: auction.currentBidder,
@@ -1831,6 +1854,9 @@ async function hostForceSell() {
         [`players/${auction.currentBidder}/budget`]: newBudget
       });
       addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins! Pick a replacement...`, 'sold');
+      if (listDone) {
+        // After replacement is confirmed, renderSold's "Next Pokémon" will hit the end
+      }
     } else {
       await db.ref(`rooms/${local.roomCode}`).update({
         phase: 'sold',
@@ -1838,13 +1864,6 @@ async function hostForceSell() {
         [`players/${auction.currentBidder}/roster`]: newRoster
       });
       addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins!`, 'sold');
-
-      // Check if all teams full or list exhausted
-      const updatedPlayers = { ...fresh.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
-      const maxTeam = fresh.settings?.maxTeamSize || 6;
-      const total = (fresh.draftList || []).length;
-      const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
-      const listDone = (fresh.draftIdx || 0) + 1 >= total;
       if (listDone) {
         setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
       }
@@ -1859,8 +1878,16 @@ async function hostSkip() {
   if (!local.isHost) return;
   if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
   const auction = roomState?.currentAuction;
-  addLogEntry(`⏭ ${auction?.name || 'Pokémon'} was skipped by host`, 'unsold');
-  await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+  const isReplacement = auction?.isReplacement || false;
+  const total = (roomState?.draftList || []).length;
+  const listDone = (roomState?.draftIdx || 0) + 1 >= total;
+  addLogEntry(`⏭ ${auction?.name || 'Pokémon'} was skipped${isReplacement ? ' (replacement pass)' : ''}`, 'unsold');
+  if (listDone) {
+    await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+    // Will auto-end after host clicks Next on unsold screen
+  } else {
+    await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+  }
 }
 
 async function hostEndDraftToLobby() {
@@ -1878,6 +1905,11 @@ async function hostEndDraftToLobby() {
 async function hostNextRound() {
   if (!local.isHost) return;
   const nextIdx = (roomState.draftIdx || 0) + 1;
+  const total = (roomState.draftList || []).length;
+  if (nextIdx >= total) {
+    await db.ref(`rooms/${local.roomCode}/phase`).set('results');
+    return;
+  }
   await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
   await advanceToNextPokemon();
 }
