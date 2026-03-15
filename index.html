@@ -211,6 +211,14 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 .btn-done:hover{border-color:rgba(255,68,68,.5);color:var(--red2);background:rgba(204,0,0,.08)}
 .btn-undo-done{background:rgba(255,203,5,.08);border:1.5px solid rgba(255,203,5,.3);color:var(--yellow);font-size:12px;font-weight:700;border-radius:8px;padding:7px 14px;cursor:pointer;width:100%;margin-top:6px;transition:all .15s;font-family:var(--fb)}
 .btn-undo-done:hover{background:rgba(255,203,5,.15);border-color:var(--yellow)}
+.replace-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;width:100%}
+.replace-slot{background:var(--card);border:2px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.replace-slot:hover{border-color:var(--red2);transform:translateY(-2px)}
+.replace-slot:hover .replace-slot-drop{opacity:1}
+.replace-slot-types{display:flex;justify-content:center;gap:4px;margin-bottom:5px;flex-wrap:wrap}
+.replace-slot-name{font-weight:900;font-size:12px;text-transform:capitalize;margin-bottom:3px}
+.replace-slot-bst{font-size:10px;color:var(--muted)}
+.replace-slot-drop{position:absolute;inset:0;background:rgba(204,0,0,.82);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:10px;color:#fff;letter-spacing:2px;opacity:0;transition:opacity .15s}
 .done-status-wrap{background:rgba(120,120,120,.08);border:1.5px solid rgba(120,120,120,.25);border-radius:10px;padding:12px 14px;width:100%;max-width:420px;text-align:center}
 .done-counter{font-size:12px;color:var(--muted);margin-bottom:6px}
 .done-pips{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
@@ -397,6 +405,13 @@ input:focus,textarea:focus{border-color:var(--yellow)}
             <option value="1">Randomized</option>
           </select>
           <div class="hint">Shuffle the Pokémon list?</div>
+        </div>
+        <div class="field-grp"><label class="lbl">After Teams Full</label>
+          <select id="s-replacement" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
+            <option value="0">End draft</option>
+            <option value="1">Replacement mode</option>
+          </select>
+          <div class="hint">Continue drafting as replacements? (No BST shown)</div>
         </div>
       </div>
     </div>
@@ -840,6 +855,7 @@ async function openLobby() {
   const hostName = document.getElementById('s-hostname').value.trim() || 'Host';
   const hostCanBid = document.getElementById('s-hostbid').value === '1';
   const randomizeOrder = document.getElementById('s-randomize').value === '1';
+  const replacementMode = document.getElementById('s-replacement').value === '1';
   const draftText = document.getElementById('draft-textarea').value;
   let draftList = parseDraftList(draftText);
   if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
@@ -864,7 +880,7 @@ async function openLobby() {
   const roomData = {
     hostSecret,
     phase: 'lobby',
-    settings: { budget, maxTeamSize: maxTeam, hostCanBid },
+    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementMode },
     draftList,
     draftIdx: 0,
     roundNum: 1,
@@ -976,7 +992,7 @@ function render() {
   if (phase === 'lobby') {
     showScreen('lobby');
     renderLobby();
-  } else if (['bidding','sold','unsold'].includes(phase)) {
+  } else if (['bidding','sold','unsold','replacing'].includes(phase)) {
     showScreen('draft');
     renderDraftHeader();
     renderSidebarPlayers();
@@ -1048,13 +1064,16 @@ async function advanceToNextPokemon() {
   const idx = roomState.draftIdx || 0;
 
   if (idx >= draftList.length) {
-    // Draft complete
     await db.ref(`rooms/${local.roomCode}/phase`).set('results');
     return;
   }
 
   const pokemon = draftList[idx];
-  const roundNum = (roomState.roundNum || 0) + (idx === 0 ? 0 : 1);
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  const replacementMode = roomState.settings?.replacementMode || false;
+  const players = roomState.players || {};
+  const allFull = Object.values(players).every(p => (p.roster || []).length >= maxTeam);
+  const isReplacement = replacementMode && allFull;
 
   const update = {
     phase: 'bidding',
@@ -1070,11 +1089,13 @@ async function advanceToNextPokemon() {
       timerEnd: null,
       timerStarted: false,
       spriteUrl: null,
-      doneBidding: null
+      doneBidding: null,
+      isReplacement: isReplacement || false
     }
   };
 
-  addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! (${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`, 'nom');
+  const modeLabel = isReplacement ? '⚡ REPLACEMENT ROUND — No BST shown!' : `(${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`;
+  addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! ${modeLabel}`, 'nom');
   spriteFetchInProgress = false;
   await db.ref(`rooms/${local.roomCode}`).update(update);
 }
@@ -1172,6 +1193,7 @@ function renderAuctionCenter() {
   if (phase === 'bidding') renderBidding(center);
   else if (phase === 'sold') renderSold(center);
   else if (phase === 'unsold') renderUnsold(center);
+  else if (phase === 'replacing') renderReplacing(center);
 }
 
 function renderBidding(el) {
@@ -1217,9 +1239,10 @@ function renderBidding(el) {
       </div>
       <div class="bst-display">
         <div class="bst-label">Base Stat Total</div>
-        <span class="bst-num">${auction.bst || '???'}</span>
+        <span class="bst-num">${auction.isReplacement ? '???' : (auction.bst || '???')}</span>
       </div>
-      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}</div>` : ''}
+      ${auction.isReplacement ? '<div style="font-size:10px;color:#CE93D8;margin-bottom:4px;font-weight:700;letter-spacing:1px">⚡ REPLACEMENT ROUND</div>' : ''}
+      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}${auction.isReplacement ? ` · BST ${auction.bst}` : ''}</div>` : ''}
     </div>`;
 
   // Timer
@@ -1477,9 +1500,120 @@ function renderUnsold(el) {
   if (!sprite) fetchAndStoreSprite(auction.name);
 }
 
-// ============================================================
-// SPRITE FETCH — stores in Firebase so all clients see it instantly
-// ============================================================
+function renderReplacing(el) {
+  const rw = roomState.replacingWith;
+  const pid = roomState.replacingPlayer;
+  const winner = roomState.players?.[pid];
+  if (!rw || !winner) return;
+
+  const isMe = pid === local.playerId;
+  const roster = winner.roster || [];
+  const sprite = rw.spriteUrl;
+
+  // New pokemon reveal card
+  const newCard = `
+    <div class="mystery-card sold-card" style="max-width:260px">
+      ${sprite ? `<img src="${sprite}" style="width:110px;height:110px;object-fit:contain;display:block;margin:0 auto 6px;animation:revealPop .4s ease-out" alt="${esc(rw.name)}">` : `<div style="width:110px;height:110px;background:var(--surf);border-radius:10px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:40px">?</div>`}
+      <div class="revealed-name" style="font-size:11px">${esc(rw.name)}</div>
+      <div class="types-row">
+        <span class="type-badge t-${rw.type1}">${rw.type1}</span>
+        ${rw.type2 ? `<span class="type-badge t-${rw.type2}">${rw.type2}</span>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">BST: <b style="color:var(--yellow)">${rw.bst}</b> · Paid: <b style="color:var(--yellow)">${rw.price}</b></div>
+    </div>`;
+
+  if (!isMe) {
+    // Everyone else waits
+    el.innerHTML = `
+      ${newCard}
+      <div style="text-align:center;padding:20px">
+        <div class="waiting-anim" style="justify-content:center;margin-bottom:10px">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+        <div style="font-weight:900;font-size:15px;margin-bottom:5px">${esc(winner.name)} won ${esc(rw.name)}!</div>
+        <div style="font-size:13px;color:var(--muted)">Waiting for ${esc(winner.name)} to pick a replacement...</div>
+      </div>
+      ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-ghost btn-sm" onclick="hostForceReplace()" style="font-size:11px">Force pick for them</button></div></div>` : ''}`;
+    return;
+  }
+
+  // Winner picks what to drop
+  const rosterCards = roster.map((pk, idx) => `
+    <div class="replace-slot" onclick="confirmReplacement(${idx})" title="Drop ${esc(pk.name)}">
+      <div class="replace-slot-types">
+        <span class="type-badge t-${pk.type1}" style="font-size:9px;padding:1px 5px">${pk.type1}</span>
+        ${pk.type2 ? `<span class="type-badge t-${pk.type2}" style="font-size:9px;padding:1px 5px">${pk.type2}</span>` : ''}
+      </div>
+      <div class="replace-slot-name">${esc(pk.name)}</div>
+      <div class="replace-slot-bst">BST ${pk.bst} · ${pk.price}🪙</div>
+      <div class="replace-slot-drop">DROP ✕</div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    ${newCard}
+    <div style="width:100%;max-width:520px">
+      <div style="font-family:var(--fd);font-size:9px;color:var(--yellow);letter-spacing:2px;text-align:center;margin-bottom:14px">Pick a Pokémon to replace</div>
+      <div class="replace-grid">${rosterCards}</div>
+      <div style="font-size:11px;color:var(--muted2);text-align:center;margin-top:10px">Click a Pokémon to drop it and keep ${esc(rw.name)}</div>
+    </div>`;
+}
+
+async function confirmReplacement(dropIdx) {
+  const pid = roomState.replacingPlayer;
+  if (pid !== local.playerId) return;
+  const winner = roomState.players?.[pid];
+  const rw = roomState.replacingWith;
+  if (!winner || !rw) return;
+
+  const roster = [...(winner.roster || [])];
+  const dropped = roster[dropIdx];
+  if (!dropped) return;
+
+  if (!confirm(`Drop ${dropped.name} and keep ${rw.name}?`)) return;
+
+  // Remove dropped, add new
+  roster.splice(dropIdx, 1);
+  const newEntry = { name: rw.name, type1: rw.type1, bst: rw.bst, price: rw.price };
+  if (rw.type2) newEntry.type2 = rw.type2;
+  roster.push(newEntry);
+
+  try {
+    await db.ref(`rooms/${local.roomCode}`).update({
+      phase: 'sold',
+      replacingWith: null,
+      replacingPlayer: null,
+      [`players/${pid}/roster`]: roster
+    });
+    addLogEntry(`🔄 ${esc(winner.name)} dropped ${esc(dropped.name)} and kept ${esc(rw.name)}!`, 'sold');
+  } catch(e) {
+    showToast('Error: ' + e.message, true);
+  }
+}
+
+async function hostForceReplace() {
+  // Host can force-pick the first slot as a fallback
+  if (!local.isHost) return;
+  const pid = roomState.replacingPlayer;
+  const winner = roomState.players?.[pid];
+  const rw = roomState.replacingWith;
+  if (!winner || !rw) return;
+  const roster = [...(winner.roster || [])];
+  if (!roster.length) return;
+  const dropped = roster[0];
+  roster.splice(0, 1);
+  const newEntry = { name: rw.name, type1: rw.type1, bst: rw.bst, price: rw.price };
+  if (rw.type2) newEntry.type2 = rw.type2;
+  roster.push(newEntry);
+  try {
+    await db.ref(`rooms/${local.roomCode}`).update({
+      phase: 'sold',
+      replacingWith: null,
+      replacingPlayer: null,
+      [`players/${pid}/roster`]: roster
+    });
+    addLogEntry(`🔄 Host forced replacement: ${esc(winner.name)} dropped ${esc(dropped.name)}, kept ${esc(rw.name)}`, 'sold');
+  } catch(e) { showToast('Error: ' + e.message, true); }
+}
 let spriteFetchInProgress = false;
 async function fetchAndStoreSprite(name) {
   if (spriteFetchInProgress) return;
@@ -1679,21 +1813,41 @@ async function hostForceSell() {
   const newRoster = [...(winner.roster || []), rosterEntry];
 
   try {
-    await db.ref(`rooms/${local.roomCode}`).update({
-      phase: 'sold',
-      [`players/${auction.currentBidder}/budget`]: newBudget,
-      [`players/${auction.currentBidder}/roster`]: newRoster
-    });
-    addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins!`, 'sold');
+    const isReplacement = auction.isReplacement || false;
 
-    // Check if all teams full or list exhausted
-    const updatedPlayers = { ...fresh.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
-    const maxTeam = fresh.settings?.maxTeamSize || 6;
-    const total = (fresh.draftList || []).length;
-    const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
-    const listDone = (fresh.draftIdx || 0) + 1 >= total;
-    if (allFull || listDone) {
-      setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+    if (isReplacement) {
+      // Don't add to roster yet — go to replacing phase so winner picks what to drop
+      await db.ref(`rooms/${local.roomCode}`).update({
+        phase: 'replacing',
+        replacingPlayer: auction.currentBidder,
+        replacingWith: {
+          name: auction.name,
+          type1: auction.type1 || 'normal',
+          ...(auction.type2 ? {type2: auction.type2} : {}),
+          bst: auction.bst || 0,
+          price: auction.currentBid,
+          spriteUrl: auction.spriteUrl || null
+        },
+        [`players/${auction.currentBidder}/budget`]: newBudget
+      });
+      addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins! Pick a replacement...`, 'sold');
+    } else {
+      await db.ref(`rooms/${local.roomCode}`).update({
+        phase: 'sold',
+        [`players/${auction.currentBidder}/budget`]: newBudget,
+        [`players/${auction.currentBidder}/roster`]: newRoster
+      });
+      addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins!`, 'sold');
+
+      // Check if all teams full or list exhausted
+      const updatedPlayers = { ...fresh.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
+      const maxTeam = fresh.settings?.maxTeamSize || 6;
+      const total = (fresh.draftList || []).length;
+      const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
+      const listDone = (fresh.draftIdx || 0) + 1 >= total;
+      if (listDone) {
+        setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+      }
     }
   } catch(e) {
     showToast('Force sell failed: ' + e.message, true);
