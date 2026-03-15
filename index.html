@@ -593,6 +593,7 @@ let db = null;
 let roomRef = null;
 let roomState = null;
 let hostTickInterval = null;
+let hostLastTimerEnd = null;
 let countdownAnimFrame = null;
 let editingPlayerId = null;
 
@@ -1132,12 +1133,15 @@ function renderAuctionCenter() {
 function renderBidding(el) {
   const auction = roomState.currentAuction;
   if (!auction) return;
+
+  if (auction.mode === 'blind') { renderBlindBidding(el); return; }
+
   const leader = auction.currentBidder ? roomState.players?.[auction.currentBidder] : null;
   const myPlayer = roomState.players?.[local.playerId];
   const maxTeam = roomState.settings?.maxTeamSize || 6;
   const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
 
-  // Build mystery card
+  // Mystery card
   const mysteryCard = `
     <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}">
       <div class="mystery-silhouette">
@@ -1160,12 +1164,12 @@ function renderBidding(el) {
       ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}</div>` : ''}
     </div>`;
 
-  // Timer section
+  // Timer
   let timerHtml = '';
   if (auction.timerEnd) {
     const remaining = Math.max(0, Math.ceil((auction.timerEnd - Date.now()) / 1000));
     const pct = Math.min(100, (remaining / DEFAULT_TIMER_SEC) * 100);
-    const cls = remaining <= 10 ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
+    const cls = remaining <= SNIPE_PROTECT_SEC ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
     timerHtml = `<div class="timer-wrap">
       <div class="timer-num ${cls}" id="timer-num">${remaining}</div>
       <div class="timer-bar-bg"><div class="timer-bar ${cls}" id="timer-bar" style="width:${pct}%"></div></div>
@@ -1182,7 +1186,7 @@ function renderBidding(el) {
     ${leader ? `<div class="ai-bidder">🏆 ${esc(leader.name)}</div>` : `<div class="ai-nobid">No bids yet · opens at ${MIN_BID} coins</div>`}
   </div>`;
 
-  // Bid input for current player
+  // Bid input
   let bidHtml = '';
   if (myPlayer) {
     const full = (myPlayer.roster || []).length >= maxTeam;
@@ -1191,9 +1195,9 @@ function renderBidding(el) {
     if (full) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full (${(myPlayer.roster||[]).length}/${maxTeam})</div></div>`;
     } else if (!canAfford) {
-      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Need ${minNext} coins · you have ${myPlayer.budget}</div></div>`;
+      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Can't afford min bid of ${minNext} · you have ${myPlayer.budget}</div></div>`;
     } else {
-      const quickAmounts = [minNext, minNext+5, minNext+20, minNext+50, minNext+100].filter(a=>a<=myPlayer.budget);
+      const quickAmounts = [minNext, minNext+5, minNext+20, minNext+50, minNext+100].filter(a => a <= myPlayer.budget);
       bidHtml = `<div class="bid-area${alreadyLeading ? '' : ' my-turn'}">
         <div class="ba-top">
           <div>
@@ -1208,7 +1212,7 @@ function renderBidding(el) {
           <button class="btn btn-green" onclick="submitMyBid()" style="padding:10px 16px;font-size:14px;font-weight:900">BID</button>
         </div>
         <div class="quick-bids">${quickAmounts.map(a=>`<button class="qb" onclick="setQuickBid(${a})">${a}</button>`).join('')}</div>
-        <div class="bid-hint">Min: <b>${minNext}</b> · Must be a multiple of 5 · Max: ${myPlayer.budget}</div>
+        <div class="bid-hint">Min: <b>${minNext}</b> · Must be a multiple of ${MIN_INCREMENT} · Max: ${myPlayer.budget}</div>
       </div>`;
     }
   }
@@ -1220,13 +1224,113 @@ function renderBidding(el) {
       <div class="hc-label"><span class="host-badge">HOST</span> Controls</div>
       <div class="hc-btns">
         ${auction.currentBidder ? `<button class="btn btn-yellow btn-sm" onclick="hostForceSell()">🔨 Force Sell</button>` : ''}
-        <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip Pokémon</button>
+        <button class="btn btn-sm" style="background:#9B59B6;color:#fff" onclick="hostStartBlindBid()">🎭 Switch to Blind Bid</button>
+        <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip</button>
       </div>
     </div>`;
   }
 
   el.innerHTML = mysteryCard + infoHtml + timerHtml + bidHtml + hostCtrlHtml;
   startCountdownDisplay();
+}
+
+function renderBlindBidding(el) {
+  const auction = roomState.currentAuction;
+  const myPlayer = roomState.players?.[local.playerId];
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  const blindBids = roomState.blindBids || {};
+  const myBid = blindBids[local.playerId];
+  const bidCount = Object.keys(blindBids).length;
+  const playerCount = Object.values(roomState.players || {}).filter(p => (p.roster||[]).length < maxTeam).length;
+  const isTiebreaker = !!(auction.tiebreakerPids);
+  const tiePids = auction.tiebreakerPids || [];
+  const tieMin = auction.tiebreakerMin || 0;
+  const imInTiebreaker = tiePids.includes(local.playerId);
+
+  const mysteryCard = `
+    <div class="mystery-card" style="border-color:#9B59B6">
+      <div class="mystery-silhouette">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" opacity=".3">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+          <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="12" fill="none" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="7" fill="currentColor"/>
+        </svg>
+        <span style="position:absolute;font-family:var(--fd);font-size:20px;color:var(--muted)">???</span>
+      </div>
+      <div style="font-family:var(--fd);font-size:9px;color:#CE93D8;letter-spacing:2px;margin-bottom:8px">🎭 BLIND BID</div>
+      <div class="types-row">
+        <span class="type-badge t-${auction.type1}">${auction.type1}</span>
+        ${auction.type2 ? `<span class="type-badge t-${auction.type2}">${auction.type2}</span>` : ''}
+      </div>
+      <div class="bst-display">
+        <div class="bst-label">Base Stat Total</div>
+        <span class="bst-num">${auction.bst || '???'}</span>
+      </div>
+      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}</div>` : ''}
+    </div>`;
+
+  // Status bar showing how many have bid
+  const statusHtml = `<div class="auction-info" style="border:1.5px solid rgba(156,39,176,.4)">
+    <div class="ai-label">Sealed Bids</div>
+    <div style="font-family:var(--fd);font-size:18px;color:#CE93D8;margin:4px 0">${bidCount} / ${playerCount}</div>
+    <div style="font-size:12px;color:var(--muted)">players have locked in a bid</div>
+    ${isTiebreaker ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(255,193,7,.1);border:1px solid rgba(255,193,7,.3);border-radius:6px;font-size:11px;color:#FFD54F;font-weight:700">⚡ TIEBREAKER — must bid above ${tieMin}</div>` : ''}
+  </div>`;
+
+  // Bid input for this player
+  let bidHtml = '';
+  if (myPlayer) {
+    const full = (myPlayer.roster || []).length >= maxTeam;
+    if (isTiebreaker && !imInTiebreaker) {
+      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason" style="color:var(--muted)">You're not in the tiebreaker</div></div>`;
+    } else if (full) {
+      bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full</div></div>`;
+    } else if (myBid) {
+      bidHtml = `<div class="bid-area" style="border-color:#4CAF50">
+        <div style="text-align:center;padding:10px">
+          <div style="font-size:24px;margin-bottom:6px">✅</div>
+          <div style="font-weight:900;font-size:15px;color:var(--green)">Bid locked in!</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Your sealed bid: <b style="color:var(--yellow)">${myBid.amount} coins</b></div>
+          <div style="font-size:11px;color:var(--muted2);margin-top:4px">Waiting for everyone else...</div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:10px;font-size:11px" onclick="db.ref('rooms/'+local.roomCode+'/blindBids/'+local.playerId).remove();showToast('Bid removed — you can rebid')">Change bid</button>
+        </div>
+      </div>`;
+    } else {
+      const minBid = isTiebreaker ? tieMin + MIN_INCREMENT : MIN_BID;
+      bidHtml = `<div class="bid-area my-turn" style="border-color:rgba(156,39,176,.5)">
+        <div class="ba-top">
+          <div>
+            <div class="ba-name">${esc(myPlayer.name)}</div>
+            <div class="ba-budget">Budget: <b style="color:var(--yellow)">${myPlayer.budget}</b> coins</div>
+          </div>
+        </div>
+        <div class="bid-input-row">
+          <input type="number" class="bid-field" id="blind-bid-input" placeholder="${minBid}+"
+            min="${minBid}" max="${myPlayer.budget}" step="${MIN_INCREMENT}"
+            onkeydown="if(event.key==='Enter')submitBlindBid()"
+            style="border-color:rgba(156,39,176,.5)!important">
+          <button class="btn btn-sm" style="background:#9B59B6;color:#fff;padding:10px 14px;font-weight:900" onclick="submitBlindBid()">LOCK IN</button>
+        </div>
+        <div class="bid-hint">Your bid is sealed until host reveals · Min: ${minBid} · Must be multiple of ${MIN_INCREMENT}</div>
+      </div>`;
+    }
+  }
+
+  // Host controls
+  let hostCtrlHtml = '';
+  if (local.isHost) {
+    hostCtrlHtml = `<div class="host-controls">
+      <div class="hc-label"><span class="host-badge">HOST</span> Blind Bid Controls</div>
+      <div class="hc-btns">
+        <button class="btn btn-sm" style="background:#9B59B6;color:#fff" onclick="hostRevealBlindBids()">🎭 Reveal Bids!</button>
+        <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip</button>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px">Bids submitted: ${Object.entries(blindBids).map(([pid,b])=>`${esc(b.playerName)}: ${b.amount}`).join(' · ') || 'none yet'}</div>
+    </div>`;
+  }
+
+  el.innerHTML = mysteryCard + statusHtml + bidHtml + hostCtrlHtml;
 }
 
 function renderSold(el) {
@@ -1327,17 +1431,20 @@ function startCountdownDisplay() {
 // HOST TIMER TICK (only runs on host's browser)
 // ============================================================
 function scheduleHostTick() {
-  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
   if (!local.isHost || roomState?.phase !== 'bidding') return;
   const auction = roomState?.currentAuction;
-  if (!auction?.timerEnd) return; // no timer yet
+  if (!auction?.timerEnd) return;
+  // Don't reset the interval if we're already watching this same timerEnd
+  if (hostTickInterval && hostLastTimerEnd === auction.timerEnd) return;
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+  hostLastTimerEnd = auction.timerEnd;
 
   hostTickInterval = setInterval(async () => {
-    if (!roomState || roomState.phase !== 'bidding') { clearInterval(hostTickInterval); return; }
+    if (!roomState || roomState.phase !== 'bidding') { clearInterval(hostTickInterval); hostTickInterval = null; return; }
     const timerEnd = roomState.currentAuction?.timerEnd;
-    if (!timerEnd) { clearInterval(hostTickInterval); return; }
+    if (!timerEnd) { clearInterval(hostTickInterval); hostTickInterval = null; return; }
     if (Date.now() >= timerEnd) {
-      clearInterval(hostTickInterval);
+      clearInterval(hostTickInterval); hostTickInterval = null;
       await hostForceSell();
     }
   }, 500);
@@ -1404,35 +1511,49 @@ function validateBid(amount, currentBid, myBudget) {
 // ============================================================
 async function hostForceSell() {
   if (!local.isHost) return;
-  const auction = roomState?.currentAuction;
-  if (!auction?.currentBidder || roomState?.phase !== 'bidding') return;
   if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
 
-  const winner = roomState.players[auction.currentBidder];
-  if (!winner) return;
+  // Always fetch fresh data — never trust stale roomState for financial ops
+  let fresh;
+  try {
+    const snap = await db.ref(`rooms/${local.roomCode}`).once('value');
+    fresh = snap.val();
+  } catch(e) { showToast('Could not read room data: ' + e.message, true); return; }
 
-  // Deduct budget and add to roster
+  if (!fresh) return;
+  const auction = fresh.currentAuction;
+  if (!auction?.currentBidder) { showToast('No current bidder to sell to', true); return; }
+  if (fresh.phase !== 'bidding') return; // already resolved
+
+  const winner = fresh.players?.[auction.currentBidder];
+  if (!winner) { showToast('Winner player not found', true); return; }
+
   const newBudget = winner.budget - auction.currentBid;
   const newRoster = [...(winner.roster || []), {
     name: auction.name, type1: auction.type1, type2: auction.type2,
     bst: auction.bst, price: auction.currentBid
   }];
 
-  await db.ref(`rooms/${local.roomCode}`).update({
-    phase: 'sold',
-    [`players/${auction.currentBidder}/budget`]: newBudget,
-    [`players/${auction.currentBidder}/roster`]: newRoster
-  });
-  addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins for ${auction.currentBid} coins!`, 'sold');
+  try {
+    await db.ref(`rooms/${local.roomCode}`).update({
+      phase: 'sold',
+      [`players/${auction.currentBidder}/budget`]: newBudget,
+      [`players/${auction.currentBidder}/roster`]: newRoster
+    });
+    addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${auction.currentBid} coins!`, 'sold');
 
-  // Check if all teams full
-  const updatedPlayers = { ...roomState.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
-  const maxTeam = roomState.settings?.maxTeamSize || 6;
-  const total = (roomState.draftList || []).length;
-  const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
-  const listDone = (roomState.draftIdx || 0) + 1 >= total;
-  if (allFull || listDone) {
-    setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+    // Check if all teams full or list exhausted
+    const updatedPlayers = { ...fresh.players, [auction.currentBidder]: { ...winner, budget: newBudget, roster: newRoster } };
+    const maxTeam = fresh.settings?.maxTeamSize || 6;
+    const total = (fresh.draftList || []).length;
+    const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
+    const listDone = (fresh.draftIdx || 0) + 1 >= total;
+    if (allFull || listDone) {
+      setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+    }
+  } catch(e) {
+    showToast('Force sell failed: ' + e.message, true);
+    console.error('Force sell error:', e);
   }
 }
 
@@ -1449,6 +1570,114 @@ async function hostNextRound() {
   const nextIdx = (roomState.draftIdx || 0) + 1;
   await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
   await advanceToNextPokemon();
+}
+
+// ============================================================
+// BLIND BID MODE
+// ============================================================
+async function hostStartBlindBid() {
+  if (!local.isHost) return;
+  if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+  await db.ref(`rooms/${local.roomCode}`).update({
+    'currentAuction/mode': 'blind',
+    'currentAuction/timerEnd': null,
+    'currentAuction/currentBid': 0,
+    'currentAuction/currentBidder': null,
+    blindBids: null,
+    blindRevealed: false
+  });
+  addLogEntry('🎭 Host started blind bid — submit your sealed bid!', 'nom');
+}
+
+async function submitBlindBid() {
+  const inp = document.getElementById('blind-bid-input');
+  const amount = parseInt(inp?.value || '');
+  const myPlayer = roomState?.players?.[local.playerId];
+  const auction = roomState?.currentAuction;
+  if (!myPlayer || !auction) return;
+
+  if (!amount || isNaN(amount) || amount < MIN_BID) { showToast(`Minimum bid is ${MIN_BID}`, true); return; }
+  if (amount % MIN_INCREMENT !== 0) { showToast(`Must be a multiple of ${MIN_INCREMENT}`, true); return; }
+  if (amount > myPlayer.budget) { showToast(`You only have ${myPlayer.budget} coins`, true); return; }
+
+  // For tiebreaker round, enforce minimum
+  const tieMin = auction.tiebreakerMin || 0;
+  if (tieMin && amount <= tieMin) { showToast(`Must bid more than ${tieMin} in tiebreaker`, true); return; }
+
+  try {
+    await db.ref(`rooms/${local.roomCode}/blindBids/${local.playerId}`).set({
+      amount, playerName: myPlayer.name, ts: Date.now()
+    });
+    if (inp) inp.value = '';
+    showToast('Bid locked in! ✓', false);
+  } catch(e) { showToast('Failed to submit: ' + e.message, true); }
+}
+
+async function hostRevealBlindBids() {
+  if (!local.isHost) return;
+  const bids = roomState?.blindBids || {};
+  const players = roomState?.players || {};
+  const auction = roomState?.currentAuction;
+  const maxTeam = roomState?.settings?.maxTeamSize || 6;
+
+  // Filter: only count bids from eligible players (not full team)
+  const eligible = Object.entries(bids).filter(([pid, b]) => {
+    const p = players[pid];
+    return p && (p.roster || []).length < maxTeam && b.amount >= MIN_BID;
+  });
+
+  if (!eligible.length) {
+    addLogEntry('🎭 Blind bids revealed — no valid bids, Pokémon passes!', 'unsold');
+    await db.ref(`rooms/${local.roomCode}`).update({ blindRevealed: true, phase: 'unsold' });
+    return;
+  }
+
+  // Log all bids
+  const sorted = eligible.sort((a,b) => b[1].amount - a[1].amount);
+  for (const [pid, b] of sorted) {
+    addLogEntry(`🎭 ${esc(b.playerName)}: ${b.amount} coins`, 'bid');
+  }
+
+  const topAmount = sorted[0][1].amount;
+  const tied = sorted.filter(([,b]) => b.amount === topAmount);
+
+  if (tied.length === 1) {
+    // Clear winner
+    const [winnerId, winBid] = tied[0];
+    const winner = players[winnerId];
+    if (!winner) return;
+    const newBudget = winner.budget - topAmount;
+    const newRoster = [...(winner.roster || []), {
+      name: auction.name, type1: auction.type1, type2: auction.type2,
+      bst: auction.bst, price: topAmount
+    }];
+    await db.ref(`rooms/${local.roomCode}`).update({
+      phase: 'sold',
+      blindRevealed: true,
+      'currentAuction/currentBid': topAmount,
+      'currentAuction/currentBidder': winnerId,
+      [`players/${winnerId}/budget`]: newBudget,
+      [`players/${winnerId}/roster`]: newRoster
+    });
+    addLogEntry(`🔨 SOLD! ${esc(winner.name)} wins ${esc(auction.name)} for ${topAmount}!`, 'sold');
+
+    const updatedPlayers = { ...players, [winnerId]: { ...winner, budget: newBudget, roster: newRoster } };
+    const total = (roomState.draftList || []).length;
+    const allFull = Object.values(updatedPlayers).every(p => (p.roster || []).length >= maxTeam);
+    const listDone = (roomState.draftIdx || 0) + 1 >= total;
+    if (allFull || listDone) setTimeout(() => db.ref(`rooms/${local.roomCode}/phase`).set('results'), 2500);
+
+  } else {
+    // Tiebreaker! Only tied players bid again
+    const tiePids = tied.map(([pid]) => pid);
+    addLogEntry(`⚡ TIE at ${topAmount}! ${tied.map(([,b])=>b.playerName).join(' vs ')} must bid again!`, 'nom');
+    await db.ref(`rooms/${local.roomCode}`).update({
+      blindRevealed: true,
+      blindBids: null,
+      'currentAuction/tiebreakerMin': topAmount,
+      'currentAuction/tiebreakerPids': tiePids
+    });
+  }
 }
 
 // ============================================================
