@@ -1061,16 +1061,53 @@ async function advanceToNextPokemon() {
   const idx = roomState.draftIdx || 0;
   const total = draftList.length;
   const replacementCount = roomState.settings?.replacementCount || 0;
+  const replacementRoundsRun = roomState.replacementRoundsRun || 0;
+  const maxTeam = roomState.settings?.maxTeamSize || 6;
+  const players = roomState.players || {};
+  const allFull = Object.values(players).length > 0 && Object.values(players).every(p => (p.roster || []).length >= maxTeam);
 
+  // If all teams are full, switch to replacement mode
+  if (allFull) {
+    if (replacementCount === 0 || replacementRoundsRun >= replacementCount || idx >= total) {
+      // No replacement rounds configured, or we've done all of them, or list exhausted
+      await db.ref(`rooms/${local.roomCode}/phase`).set('results');
+      return;
+    }
+    // Run a replacement round
+    const pokemon = draftList[idx];
+    const update = {
+      phase: 'bidding',
+      roundNum: idx + 1,
+      draftIdx: idx,
+      replacementRoundsRun: replacementRoundsRun + 1,
+      currentAuction: {
+        name: pokemon.name,
+        type1: pokemon.type1,
+        type2: pokemon.type2 || null,
+        bst: pokemon.bst || 0,
+        currentBid: 0,
+        currentBidder: null,
+        timerEnd: Date.now() + DEFAULT_TIMER_SEC * 1000,
+        timerStarted: true,
+        spriteUrl: null,
+        doneBidding: null,
+        isReplacement: true
+      }
+    };
+    addLogEntry(`⚡ Replacement Round ${replacementRoundsRun + 1}/${replacementCount}: New Pokémon up! No BST shown.`, 'nom');
+    spriteFetchInProgress = false;
+    await db.ref(`rooms/${local.roomCode}`).update(update);
+    scheduleHostTick();
+    return;
+  }
+
+  // Normal draft pick
   if (idx >= total) {
     await db.ref(`rooms/${local.roomCode}/phase`).set('results');
     return;
   }
 
   const pokemon = draftList[idx];
-  // A pick is a replacement if it falls in the last `replacementCount` slots of the list
-  const isReplacement = replacementCount > 0 && idx >= (total - replacementCount);
-
   const update = {
     phase: 'bidding',
     roundNum: idx + 1,
@@ -1086,22 +1123,13 @@ async function advanceToNextPokemon() {
       timerStarted: false,
       spriteUrl: null,
       doneBidding: null,
-      isReplacement: isReplacement
+      isReplacement: false
     }
   };
 
-  const modeLabel = isReplacement ? '⚡ REPLACEMENT ROUND — No BST shown!' : `(${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`;
-  addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! ${modeLabel}`, 'nom');
+  addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! (${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`, 'nom');
   spriteFetchInProgress = false;
-
-  // Replacement rounds start the timer immediately (no bid required to start it)
-  if (isReplacement) {
-    update.currentAuction.timerEnd = Date.now() + DEFAULT_TIMER_SEC * 1000;
-    update.currentAuction.timerStarted = true;
-  }
-
   await db.ref(`rooms/${local.roomCode}`).update(update);
-  if (isReplacement) scheduleHostTick();
 }
 
 // ============================================================
@@ -1218,7 +1246,7 @@ function renderBidding(el) {
   const players = roomState.players || {};
   const eligibleNonLeaders = Object.entries(players).filter(([pid, p]) => {
     if (pid === auction.currentBidder) return false; // leader excluded
-    if ((p.roster || []).length >= maxTeam) return false;
+    if (!auction.isReplacement && (p.roster || []).length >= maxTeam) return false; // full only blocks in normal rounds
     if (p.budget < minNext) return false;
     return true;
   });
@@ -1289,7 +1317,8 @@ function renderBidding(el) {
   if (myPlayer) {
     const full = (myPlayer.roster || []).length >= maxTeam;
     const canAfford = myPlayer.budget >= minNext;
-    if (full) {
+    const blockedByFull = full && !auction.isReplacement;
+    if (blockedByFull) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full (${(myPlayer.roster||[]).length}/${maxTeam})</div></div>`;
     } else if (!canAfford) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Can't afford min bid of ${minNext} · you have ${myPlayer.budget}</div></div>`;
@@ -1353,7 +1382,10 @@ function renderBlindBidding(el) {
   const blindBids = roomState.blindBids || {};
   const myBid = blindBids[local.playerId];
   const bidCount = Object.keys(blindBids).length;
-  const playerCount = Object.values(roomState.players || {}).filter(p => (p.roster||[]).length < maxTeam).length;
+  const playerCount = Object.values(roomState.players || {}).filter(p => {
+    const full = (p.roster||[]).length >= maxTeam;
+    return !full || auction.isReplacement;
+  }).length;
   const isTiebreaker = !!(auction.tiebreakerPids);
   const tiePids = auction.tiebreakerPids || [];
   const tieMin = auction.tiebreakerMin || 0;
@@ -1396,7 +1428,7 @@ function renderBlindBidding(el) {
     const full = (myPlayer.roster || []).length >= maxTeam;
     if (isTiebreaker && !imInTiebreaker) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason" style="color:var(--muted)">You're not in the tiebreaker</div></div>`;
-    } else if (full) {
+    } else if (full && !isTiebreaker && !auction.isReplacement) {
       bidHtml = `<div class="bid-area cant-bid"><div class="bid-reason">Your team is full</div></div>`;
     } else if (myBid) {
       bidHtml = `<div class="bid-area" style="border-color:#4CAF50">
@@ -1709,7 +1741,7 @@ async function submitMyBid() {
   if (errMsg) { showToast(errMsg, true); if(inp){inp.classList.add('shake');setTimeout(()=>inp.classList.remove('shake'),400);} return; }
 
   const maxTeam = roomState.settings?.maxTeamSize || 6;
-  if ((myPlayer.roster || []).length >= maxTeam) { showToast("Your team is full!", true); return; }
+  if (!auction.isReplacement && (myPlayer.roster || []).length >= maxTeam) { showToast("Your team is full!", true); return; }
 
   // Calculate new timerEnd with snipe protection
   let timerEnd = auction.timerEnd;
@@ -1771,7 +1803,7 @@ async function checkAllDone() {
   const doneBidding = auction.doneBidding || {};
   const eligibleNonLeaders = Object.entries(players).filter(([pid, p]) => {
     if (pid === auction.currentBidder) return false;
-    if ((p.roster || []).length >= maxTeam) return false;
+    if (!auction.isReplacement && (p.roster || []).length >= maxTeam) return false;
     if (p.budget < minNext) return false;
     return true;
   });
@@ -1904,13 +1936,24 @@ async function hostEndDraftToLobby() {
 
 async function hostNextRound() {
   if (!local.isHost) return;
+  const wasReplacement = roomState.currentAuction?.isReplacement;
   const nextIdx = (roomState.draftIdx || 0) + 1;
   const total = (roomState.draftList || []).length;
-  if (nextIdx >= total) {
-    await db.ref(`rooms/${local.roomCode}/phase`).set('results');
-    return;
+  // Only advance draftIdx during normal rounds
+  if (!wasReplacement) {
+    if (nextIdx >= total) {
+      // List exhausted — check if replacement rounds needed
+      await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
+    } else {
+      await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
+    }
   }
-  await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
+  // For replacement rounds, draftIdx keeps advancing to pull next pokemon from list
+  else {
+    if (nextIdx < total) {
+      await db.ref(`rooms/${local.roomCode}/draftIdx`).set(nextIdx);
+    }
+  }
   await advanceToNextPokemon();
 }
 
@@ -1965,7 +2008,8 @@ async function hostRevealBlindBids() {
   // Filter: only count bids from eligible players (not full team)
   const eligible = Object.entries(bids).filter(([pid, b]) => {
     const p = players[pid];
-    return p && (p.roster || []).length < maxTeam && b.amount >= MIN_BID;
+    const full = (p?.roster || []).length >= maxTeam;
+    return p && (!full || auction.isReplacement) && b.amount >= MIN_BID;
   });
 
   if (!eligible.length) {
