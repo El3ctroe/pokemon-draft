@@ -381,6 +381,15 @@ input:focus,textarea:focus{border-color:var(--yellow)}
           <div class="hint">Can the host also bid?</div>
         </div>
       </div>
+      <div class="two-col" style="margin-bottom:0">
+        <div class="field-grp"><label class="lbl">Draft Order</label>
+          <select id="s-randomize" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
+            <option value="0">In order (as listed)</option>
+            <option value="1">Randomized</option>
+          </select>
+          <div class="hint">Shuffle the Pokémon list?</div>
+        </div>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -821,9 +830,17 @@ async function openLobby() {
   const maxTeam = parseInt(document.getElementById('s-maxteam').value) || 6;
   const hostName = document.getElementById('s-hostname').value.trim() || 'Host';
   const hostCanBid = document.getElementById('s-hostbid').value === '1';
+  const randomizeOrder = document.getElementById('s-randomize').value === '1';
   const draftText = document.getElementById('draft-textarea').value;
-  const draftList = parseDraftList(draftText);
+  let draftList = parseDraftList(draftText);
   if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
+  if (randomizeOrder) {
+    // Fisher-Yates shuffle
+    for (let i = draftList.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [draftList[i], draftList[j]] = [draftList[j], draftList[i]];
+    }
+  }
 
   const btn = document.getElementById('open-lobby-btn');
   btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> Creating Room...';
