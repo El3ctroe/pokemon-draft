@@ -171,7 +171,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 .mystery-card{background:var(--card);border:2px solid var(--border2);border-radius:18px;padding:20px;text-align:center;width:100%;max-width:340px;transition:border-color .4s}
 .mystery-card.has-bid{border-color:var(--green)}
 .mystery-card.sold-card{border-color:var(--yellow)}
-.mystery-card.unsold-card{border-color:var(--muted2)}
+.mystery-card.paused-card{border-color:rgba(255,193,7,.5);opacity:.85}
 .mystery-silhouette{width:130px;height:130px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;position:relative}
 .mystery-silhouette svg{width:100%;height:100%}
 .poke-sprite{width:130px;height:130px;object-fit:contain;margin-bottom:12px}
@@ -265,9 +265,9 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 .res-card.winner{border-color:var(--yellow)}
 .res-pname{font-family:var(--fd);font-size:9px;color:var(--yellow);margin-bottom:3px}
 .res-stats{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-bottom:10px}
-.roster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
-.res-pk{background:var(--surf);border-radius:7px;padding:5px 4px;text-align:center}
-.res-pk img{width:44px;height:44px;object-fit:contain}
+.roster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px}
+.res-pk{background:var(--surf);border-radius:8px;padding:6px 5px;text-align:center}
+.res-pk img{width:64px;height:64px;object-fit:contain}
 .res-pk-name{font-size:9px;font-weight:700;text-transform:capitalize;margin-top:2px;line-height:1.3}
 .res-pk-price{font-size:9px;color:var(--yellow)}
 .res-pk-type{margin-top:2px}
@@ -411,13 +411,31 @@ input:focus,textarea:focus{border-color:var(--yellow)}
           <div class="hint">Last N Pokémon are replacements (0 = none). No BST shown. Optional to buy.</div>
         </div>
       </div>
+      <div class="two-col" style="margin-bottom:12px;margin-top:12px">
+        <div class="field-grp"><label class="lbl">Bid Timer (seconds)</label>
+          <input type="number" id="s-timer" value="60" min="10" max="600">
+          <div class="hint">Countdown after each bid</div>
+        </div>
+        <div class="field-grp"><label class="lbl">Replacement Timer (s)</label>
+          <input type="number" id="s-replacement-timer" value="60" min="10" max="600">
+          <div class="hint">Timer for replacement rounds</div>
+        </div>
+      </div>
+      <div class="field-grp" style="margin-bottom:0">
+        <label class="lbl">Auto-advance</label>
+        <select id="s-autoadvance" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
+          <option value="0">Host clicks Next manually</option>
+          <option value="1">Auto-advance to next Pokémon</option>
+        </select>
+        <div class="hint">Automatically start next auction after sold/skipped?</div>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="card-title">📋 Draft List</div>
       <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7">
         Load a <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:11px">draftorder.txt</code> file 
-        or paste Pokémon manually. Format: <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:11px">Name,Type1,Type2,BST</code> (one per line, Type2 optional)
+        or paste Pokémon manually. Format: <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:11px">Name,Type1,Type2,BST,StartPrice</code> (one per line. Type2 and StartPrice optional — default start price is 5)
       </p>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('file-input').click()">📁 Load .txt File</button>
@@ -621,8 +639,10 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 // ============================================================
 const MIN_BID = 5;
 const MIN_INCREMENT = 5;
-const DEFAULT_TIMER_SEC = 60;
 const SNIPE_PROTECT_SEC = 10;
+// DEFAULT_TIMER_SEC is now dynamic from roomState.settings.timerSec, fallback 60
+function getTimerSec() { return (roomState?.settings?.timerSec) || 60; }
+function getReplacementTimerSec() { return (roomState?.settings?.replacementTimerSec) || getTimerSec(); }
 
 // ============================================================
 // LOCAL STATE
@@ -781,26 +801,26 @@ function loadFile(event) {
 
 function loadSampleList() {
   document.getElementById('draft-textarea').value =
-`Charizard,Fire,Flying,534
-Blastoise,Water,,530
-Venusaur,Grass,Poison,525
-Pikachu,Electric,,320
-Mewtwo,Psychic,,680
-Gengar,Ghost,Poison,500
-Snorlax,Normal,,540
-Dragonite,Dragon,Flying,600
-Lapras,Water,Ice,535
-Alakazam,Psychic,,500
-Machamp,Fighting,,505
-Gyarados,Water,Flying,540
-Arcanine,Fire,,555
-Raichu,Electric,,485
-Nidoking,Poison,Ground,505
-Clefable,Fairy,,483
-Eevee,Normal,,325
-Slowbro,Water,Psychic,490
-Jolteon,Electric,,525
-Flareon,Fire,,525`;
+`Charizard,Fire,Flying,534,50
+Blastoise,Water,,530,50
+Venusaur,Grass,Poison,525,50
+Pikachu,Electric,,320,5
+Mewtwo,Psychic,,680,200
+Gengar,Ghost,Poison,500,30
+Snorlax,Normal,,540,40
+Dragonite,Dragon,Flying,600,100
+Lapras,Water,Ice,535,40
+Alakazam,Psychic,,500,30
+Machamp,Fighting,,505,25
+Gyarados,Water,Flying,540,50
+Arcanine,Fire,,555,50
+Raichu,Electric,,485,20
+Nidoking,Poison,Ground,505,30
+Clefable,Fairy,,483,20
+Eevee,Normal,,325,5
+Slowbro,Water,Psychic,490,25
+Jolteon,Electric,,525,40
+Flareon,Fire,,525,40`;
   previewDraftList();
 }
 
@@ -814,7 +834,8 @@ function parseDraftList(text) {
     const type1 = (parts[1] || '').toLowerCase();
     const type2 = (parts[2] || '').toLowerCase() || null;
     const bst = parseInt(parts[3]) || 0;
-    if (name && type1) list.push({ name, type1, type2, bst });
+    const startPrice = parseInt(parts[4]) || MIN_BID; // 5th column, default MIN_BID
+    if (name && type1) list.push({ name, type1, type2, bst, startPrice });
   }
   return list;
 }
@@ -853,6 +874,9 @@ async function openLobby() {
   const hostCanBid = document.getElementById('s-hostbid').value === '1';
   const randomizeOrder = document.getElementById('s-randomize').value === '1';
   const replacementCount = Math.max(0, parseInt(document.getElementById('s-replacement').value) || 0);
+  const timerSec = Math.max(10, parseInt(document.getElementById('s-timer').value) || 60);
+  const replacementTimerSec = Math.max(10, parseInt(document.getElementById('s-replacement-timer').value) || 60);
+  const autoAdvance = document.getElementById('s-autoadvance').value === '1';
   const draftText = document.getElementById('draft-textarea').value;
   let draftList = parseDraftList(draftText);
   if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
@@ -877,7 +901,7 @@ async function openLobby() {
   const roomData = {
     hostSecret,
     phase: 'lobby',
-    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementCount },
+    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementCount, timerSec, replacementTimerSec, autoAdvance },
     draftList,
     draftIdx: 0,
     roundNum: 1,
@@ -976,6 +1000,14 @@ function subscribeRoom(code) {
     roomState = snap.val();
     const savedSecret = localStorage.getItem(`draft_host_${code}`);
     local.isHost = !!(savedSecret && roomState.hostSecret === savedSecret);
+
+    // Detect if current player was kicked
+    if (!local.isHost && local.playerId && !roomState.players?.[local.playerId]) {
+      backToSplash();
+      showToast('You were removed from the draft', true);
+      return;
+    }
+
     render();
   });
 }
@@ -1075,6 +1107,7 @@ async function advanceToNextPokemon() {
     }
     // Run a replacement round
     const pokemon = draftList[idx];
+    const rTimerSec = getReplacementTimerSec();
     const update = {
       phase: 'bidding',
       roundNum: idx + 1,
@@ -1085,9 +1118,11 @@ async function advanceToNextPokemon() {
         type1: pokemon.type1,
         type2: pokemon.type2 || null,
         bst: pokemon.bst || 0,
+        startPrice: pokemon.startPrice || MIN_BID,
         currentBid: 0,
         currentBidder: null,
-        timerEnd: Date.now() + DEFAULT_TIMER_SEC * 1000,
+        timerEnd: Date.now() + rTimerSec * 1000,
+        timerSec: rTimerSec,
         timerStarted: true,
         spriteUrl: null,
         doneBidding: null,
@@ -1108,6 +1143,7 @@ async function advanceToNextPokemon() {
   }
 
   const pokemon = draftList[idx];
+  const tSec = getTimerSec();
   const update = {
     phase: 'bidding',
     roundNum: idx + 1,
@@ -1117,9 +1153,11 @@ async function advanceToNextPokemon() {
       type1: pokemon.type1,
       type2: pokemon.type2 || null,
       bst: pokemon.bst || 0,
+      startPrice: pokemon.startPrice || MIN_BID,
       currentBid: 0,
       currentBidder: null,
       timerEnd: null,
+      timerSec: tSec,
       timerStarted: false,
       spriteUrl: null,
       doneBidding: null,
@@ -1193,7 +1231,7 @@ function renderSidebarPlayers() {
         </div>`).join('')}
     </div>` : '';
 
-    const editBtn = local.isHost ? `<button class="edit-budget-btn" onclick="openEditBudget('${pid}')" title="Edit budget">✏️</button>` : '';
+    const editBtn = local.isHost ? `<button class="edit-budget-btn" onclick="openEditBudget('${pid}')" title="Edit budget">✏️</button><button class="edit-budget-btn" onclick="kickPlayer('${pid}')" title="Kick player" style="color:var(--red2)">✕</button>` : '';
 
     return `<div class="${cls}">
       <div class="pc-top">
@@ -1237,7 +1275,10 @@ function renderBidding(el) {
   const leader = auction.currentBidder ? roomState.players?.[auction.currentBidder] : null;
   const myPlayer = roomState.players?.[local.playerId];
   const maxTeam = roomState.settings?.maxTeamSize || 6;
-  const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
+  const sp = auction.startPrice || MIN_BID;
+  const minNext = auction.currentBid > 0 ? auction.currentBid + MIN_INCREMENT : sp;
+  const tSec = auction.timerSec || getTimerSec();
+  const isPaused = !!roomState.timerPaused;
   const doneBidding = auction.doneBidding || {};
   const iAmDone = !!doneBidding[local.playerId];
   const iAmLeading = auction.currentBidder === local.playerId;
@@ -1253,9 +1294,11 @@ function renderBidding(el) {
   const doneCount = eligibleNonLeaders.filter(([pid]) => doneBidding[pid]).length;
   const totalEligible = eligibleNonLeaders.length;
 
-  // Mystery card
+  // Mystery card — host ONLY sees name if they are a bidding participant
+  const hostCanBid = roomState.settings?.hostCanBid || false;
+  const showHostName = local.isHost && hostCanBid;
   const mysteryCard = `
-    <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}">
+    <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}${isPaused ? ' paused-card' : ''}">
       <div class="mystery-silhouette">
         <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" opacity=".3">
           <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
@@ -1274,29 +1317,30 @@ function renderBidding(el) {
         <span class="bst-num">${auction.isReplacement ? '???' : (auction.bst || '???')}</span>
       </div>
       ${auction.isReplacement ? '<div style="font-size:10px;color:#CE93D8;margin-bottom:4px;font-weight:700;letter-spacing:1px">⚡ REPLACEMENT ROUND</div>' : ''}
-      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${esc(auction.name)}${auction.isReplacement ? ` · BST ${auction.bst}` : ''}</div>` : ''}
+      ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${showHostName ? esc(auction.name) : '(hidden — you are not bidding)'}${auction.isReplacement && showHostName ? ` · BST ${auction.bst}` : auction.isReplacement ? ` · BST ${auction.bst}` : ''}</div>` : ''}
     </div>`;
 
   // Timer
   let timerHtml = '';
   if (auction.timerEnd) {
     const remaining = Math.max(0, Math.ceil((auction.timerEnd - Date.now()) / 1000));
-    const pct = Math.min(100, (remaining / DEFAULT_TIMER_SEC) * 100);
+    const pct = Math.min(100, (remaining / tSec) * 100);
     const cls = remaining <= SNIPE_PROTECT_SEC ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
     timerHtml = `<div class="timer-wrap">
+      ${isPaused ? '<div style="font-family:var(--fd);font-size:9px;color:var(--yellow);letter-spacing:2px;text-align:center;margin-bottom:6px">⏸ PAUSED</div>' : ''}
       <div class="timer-num ${cls}" id="timer-num">${remaining}</div>
       <div class="timer-bar-bg"><div class="timer-bar ${cls}" id="timer-bar" style="width:${pct}%"></div></div>
-      <div class="timer-sub" id="timer-sub">${remaining <= SNIPE_PROTECT_SEC ? '⚡ Snipe protection active' : 'seconds remaining'}</div>
+      <div class="timer-sub" id="timer-sub">${remaining <= SNIPE_PROTECT_SEC ? '⚡ Snipe protection active' : isPaused ? 'paused' : 'seconds remaining'}</div>
     </div>`;
   } else {
-    timerHtml = `<div class="timer-waiting">⏳ Timer starts with first bid (${DEFAULT_TIMER_SEC}s)</div>`;
+    timerHtml = `<div class="timer-waiting">⏳ Timer starts with first bid (${tSec}s)</div>`;
   }
 
   // Auction info
   const infoHtml = `<div class="auction-info">
     <div class="ai-label">Current High Bid</div>
     <div class="ai-bid">${auction.currentBid || '—'}</div>
-    ${leader ? `<div class="ai-bidder">🏆 ${esc(leader.name)}</div>` : `<div class="ai-nobid">No bids yet · opens at ${MIN_BID} coins</div>`}
+    ${leader ? `<div class="ai-bidder">🏆 ${esc(leader.name)}</div>` : `<div class="ai-nobid">No bids yet · opens at <b>${sp}</b> coins</div>`}
   </div>`;
 
   // Done bidding status panel (shown when at least one bid exists)
@@ -1337,7 +1381,7 @@ function renderBidding(el) {
         <button class="btn-undo-done" onclick="undoDoneBidding()">↩ Undo — I want to bid</button>
       </div>`;
     } else {
-      const quickAmounts = [minNext, minNext+5, minNext+20, minNext+50, minNext+100].filter(a => a <= myPlayer.budget);
+      const quickAmounts = [minNext, minNext+10, minNext+25, minNext+50, minNext+100].filter(a => a <= myPlayer.budget && a % MIN_INCREMENT === 0);
       bidHtml = `<div class="bid-area my-turn">
         <div class="ba-top">
           <div>
@@ -1355,18 +1399,27 @@ function renderBidding(el) {
         <div class="bid-hint">Min: <b>${minNext}</b> · Must be a multiple of ${MIN_INCREMENT} · Max: ${myPlayer.budget}</div>
         ${auction.currentBidder ? `<button class="btn-done" onclick="markDoneBidding()">🙅 Done Bidding</button>` : ''}
       </div>`;
-    }
-  }
+    } // end else
+  } // end if (myPlayer)
 
   // Host controls
   let hostCtrlHtml = '';
   if (local.isHost) {
+    const pauseBtn = auction.timerEnd
+      ? `<button class="btn btn-sm" style="background:${isPaused?'var(--green)':'rgba(255,193,7,.15)'};color:${isPaused?'#fff':'#FFD54F'};border:1px solid ${isPaused?'var(--green)':'rgba(255,193,7,.4)'}" onclick="hostTogglePause()">${isPaused ? '▶ Resume' : '⏸ Pause'}</button>`
+      : '';
     hostCtrlHtml = `<div class="host-controls">
       <div class="hc-label"><span class="host-badge">HOST</span> Controls</div>
       <div class="hc-btns">
         ${auction.currentBidder ? `<button class="btn btn-yellow btn-sm" onclick="hostForceSell()">🔨 Force Sell</button>` : ''}
+        ${pauseBtn}
         <button class="btn btn-sm" style="background:#9B59B6;color:#fff" onclick="hostStartBlindBid()">🎭 Blind Bid</button>
         <button class="btn btn-outline-red btn-sm" onclick="hostSkip()">⏭ Skip</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--muted);white-space:nowrap">Change timer:</span>
+        <input type="number" id="host-timer-change" value="${tSec}" min="10" max="600" style="width:65px;background:var(--surf);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;padding:4px 6px;outline:none">
+        <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="hostChangeTimer()">Apply</button>
       </div>
     </div>`;
   }
@@ -1504,8 +1557,12 @@ function renderSold(el) {
     </div>
     ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
 
-  // If no sprite yet, fetch and store it in Firebase so all clients get it
   if (!sprite) fetchAndStoreSprite(auction.name);
+
+  // Auto-advance if enabled
+  if (roomState.settings?.autoAdvance && local.isHost) {
+    setTimeout(() => { if (roomState?.phase === 'sold') hostNextRound(); }, 3000);
+  }
 }
 
 function renderUnsold(el) {
@@ -1534,6 +1591,11 @@ function renderUnsold(el) {
     ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
 
   if (!sprite) fetchAndStoreSprite(auction.name);
+
+  // Auto-advance if enabled
+  if (roomState.settings?.autoAdvance && local.isHost) {
+    setTimeout(() => { if (roomState?.phase === 'unsold') hostNextRound(); }, 2500);
+  }
 }
 
 function renderReplacing(el) {
@@ -1697,6 +1759,27 @@ function toPokeApiSlug(name) {
 }
 
 // ============================================================
+// AUDIO — beep for last 5 seconds
+// ============================================================
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+  return audioCtx;
+}
+function playBeep(freq = 880, duration = 0.08, vol = 0.25) {
+  const ctx = getAudioCtx(); if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = freq; o.type = 'sine';
+    g.gain.setValueAtTime(vol, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    o.start(ctx.currentTime); o.stop(ctx.currentTime + duration);
+  } catch(e) {}
+}
+let lastBeepSecond = -1;
+
+// ============================================================
 // COUNTDOWN DISPLAY
 // ============================================================
 function startCountdownDisplay() {
@@ -1704,8 +1787,10 @@ function startCountdownDisplay() {
   function tick() {
     const auction = roomState?.currentAuction;
     if (!auction?.timerEnd || roomState?.phase !== 'bidding') return;
+    if (roomState?.timerPaused) { countdownAnimFrame = requestAnimationFrame(tick); return; }
+    const tSec = auction.timerSec || getTimerSec();
     const remaining = Math.max(0, Math.ceil((auction.timerEnd - Date.now()) / 1000));
-    const pct = Math.min(100, (remaining / DEFAULT_TIMER_SEC) * 100);
+    const pct = Math.min(100, (remaining / tSec) * 100);
     const cls = remaining <= SNIPE_PROTECT_SEC ? 'hot' : remaining <= 20 ? 'warn' : 'ok';
     const numEl = document.getElementById('timer-num');
     const barEl = document.getElementById('timer-bar');
@@ -1713,8 +1798,15 @@ function startCountdownDisplay() {
     if (numEl) { numEl.textContent = remaining; numEl.className = `timer-num ${cls}`; }
     if (barEl) { barEl.style.width = pct + '%'; barEl.className = `timer-bar ${cls}`; }
     if (subEl) subEl.textContent = remaining <= SNIPE_PROTECT_SEC ? '⚡ Snipe protection active' : 'seconds remaining';
+    // Beep for last 5 seconds (only if there's a bidder — don't beep on waiting state)
+    if (remaining <= 5 && remaining > 0 && remaining !== lastBeepSecond && auction.currentBidder) {
+      lastBeepSecond = remaining;
+      playBeep(remaining === 1 ? 1200 : 880);
+    }
+    if (remaining === 0) lastBeepSecond = -1;
     countdownAnimFrame = requestAnimationFrame(tick);
   }
+  lastBeepSecond = -1;
   countdownAnimFrame = requestAnimationFrame(tick);
 }
 
@@ -1725,13 +1817,13 @@ function scheduleHostTick() {
   if (!local.isHost || roomState?.phase !== 'bidding') return;
   const auction = roomState?.currentAuction;
   if (!auction?.timerEnd) return;
-  // Don't reset the interval if we're already watching this same timerEnd
   if (hostTickInterval && hostLastTimerEnd === auction.timerEnd) return;
   if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
   hostLastTimerEnd = auction.timerEnd;
 
   hostTickInterval = setInterval(async () => {
     if (!roomState || roomState.phase !== 'bidding') { clearInterval(hostTickInterval); hostTickInterval = null; return; }
+    if (roomState.timerPaused) return; // paused — don't fire
     const timerEnd = roomState.currentAuction?.timerEnd;
     if (!timerEnd) { clearInterval(hostTickInterval); hostTickInterval = null; return; }
     if (Date.now() >= timerEnd) {
@@ -1739,6 +1831,49 @@ function scheduleHostTick() {
       await hostForceSell();
     }
   }, 500);
+}
+
+async function hostTogglePause() {
+  if (!local.isHost) return;
+  const isPaused = !!roomState.timerPaused;
+  if (isPaused) {
+    // Resume: extend timerEnd by the remaining pause duration
+    const pausedAt = roomState.timerPausedAt || Date.now();
+    const elapsed = Date.now() - pausedAt;
+    const currentEnd = roomState.currentAuction?.timerEnd || Date.now();
+    const newEnd = currentEnd + elapsed;
+    await db.ref(`rooms/${local.roomCode}`).update({
+      timerPaused: null, timerPausedAt: null,
+      'currentAuction/timerEnd': newEnd
+    });
+    hostLastTimerEnd = null; // force reschedule
+    scheduleHostTick();
+    addLogEntry('▶ Host resumed the timer', 'info');
+  } else {
+    await db.ref(`rooms/${local.roomCode}`).update({
+      timerPaused: true, timerPausedAt: Date.now()
+    });
+    if (hostTickInterval) { clearInterval(hostTickInterval); hostTickInterval = null; }
+    addLogEntry('⏸ Host paused the timer', 'info');
+  }
+}
+
+async function hostChangeTimer() {
+  if (!local.isHost) return;
+  const inp = document.getElementById('host-timer-change');
+  const secs = Math.max(10, parseInt(inp?.value || '60'));
+  const newEnd = Date.now() + secs * 1000;
+  const auction = roomState?.currentAuction;
+  if (!auction) return;
+  await db.ref(`rooms/${local.roomCode}`).update({
+    timerPaused: null, timerPausedAt: null,
+    'currentAuction/timerEnd': newEnd,
+    'currentAuction/timerSec': secs,
+    'settings/timerSec': secs
+  });
+  hostLastTimerEnd = null;
+  scheduleHostTick();
+  showToast(`Timer set to ${secs}s`, false);
 }
 
 // ============================================================
@@ -1757,7 +1892,7 @@ async function submitMyBid() {
   if (!myPlayer || !auction) return;
 
   const minNext = Math.max(MIN_BID, (auction.currentBid || 0) + MIN_INCREMENT);
-  const errMsg = validateBid(amount, auction.currentBid || 0, myPlayer.budget);
+  const errMsg = validateBid(amount, auction.currentBid || 0, myPlayer.budget, auction.startPrice || MIN_BID);
   if (errMsg) { showToast(errMsg, true); if(inp){inp.classList.add('shake');setTimeout(()=>inp.classList.remove('shake'),400);} return; }
 
   const maxTeam = roomState.settings?.maxTeamSize || 6;
@@ -1765,9 +1900,10 @@ async function submitMyBid() {
 
   // Calculate new timerEnd with snipe protection
   let timerEnd = auction.timerEnd;
+  const tSec = auction.timerSec || getTimerSec();
   const now = Date.now();
   if (!timerEnd) {
-    timerEnd = now + DEFAULT_TIMER_SEC * 1000; // first bid starts timer
+    timerEnd = now + tSec * 1000; // first bid starts timer
   } else {
     const remaining = timerEnd - now;
     if (remaining < SNIPE_PROTECT_SEC * 1000) {
@@ -1835,10 +1971,11 @@ async function checkAllDone() {
   }
 }
 
-function validateBid(amount, currentBid, myBudget) {
+function validateBid(amount, currentBid, myBudget, startPrice) {
   if (!amount || isNaN(amount)) return 'Enter a bid amount';
-  const minNext = Math.max(MIN_BID, currentBid + MIN_INCREMENT);
-  if (amount < minNext) return `Minimum bid is ${minNext} coins`;
+  const sp = startPrice || MIN_BID;
+  const minNext = currentBid > 0 ? currentBid + MIN_INCREMENT : sp;
+  if (amount < minNext) return currentBid > 0 ? `Minimum bid is ${minNext} coins` : `Opening bid is at least ${sp} coins`;
   if (amount % MIN_INCREMENT !== 0) return `Bid must be a multiple of ${MIN_INCREMENT} (e.g. ${Math.ceil(amount/MIN_INCREMENT)*MIN_INCREMENT})`;
   if (amount > myBudget) return `You only have ${myBudget} coins`;
   return null;
@@ -2140,9 +2277,55 @@ async function doEditBudget() {
   } catch(e) { errEl.textContent='Failed: ' + e.message; errEl.style.display='block'; }
 }
 
+async function kickPlayer(pid) {
+  if (!local.isHost) return;
+  if (pid === local.playerId) { showToast("Can't kick yourself", true); return; }
+  const player = roomState?.players?.[pid];
+  if (!player) return;
+  if (!confirm(`Kick ${player.name} from the draft?`)) return;
+  try {
+    await db.ref(`rooms/${local.roomCode}/players/${pid}`).remove();
+    addLogEntry(`🚫 ${esc(player.name)} was kicked by the host`, 'info');
+    showToast(`${player.name} kicked`, false);
+  } catch(e) { showToast('Kick failed: ' + e.message, true); }
+}
+
 // ============================================================
 // RESULTS
 // ============================================================
+const spriteCache = {};
+async function loadResultSprites() {
+  const players = Object.values(roomState.players || {});
+  for (const p of players) {
+    for (const pk of (p.roster || [])) {
+      if (!spriteCache[pk.name]) {
+        try {
+          const slug = toPokeApiSlug(pk.name);
+          const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${slug}`);
+          if (r.ok) {
+            const d = await r.json();
+            spriteCache[pk.name] = d.sprites?.other?.['official-artwork']?.front_default || d.sprites?.front_default || null;
+          }
+        } catch(e) {}
+        // Re-render each time a sprite loads so they appear progressively
+        renderResults();
+      }
+    }
+  }
+}
+
+function resRosterHtml(roster) {
+  if (!roster.length) return '<div style="color:var(--muted);font-size:11px;grid-column:1/-1;text-align:center;padding:10px">Nothing drafted</div>';
+  return roster.map(pk => {
+    const sprite = spriteCache[pk.name];
+    const imgHtml = sprite
+      ? `<img src="${sprite}" style="width:64px;height:64px;object-fit:contain;display:block;margin:0 auto" alt="${esc(pk.name)}">`
+      : `<div style="width:64px;height:64px;background:var(--surf);border-radius:8px;margin:0 auto;display:flex;align-items:center;justify-content:center"><div class="spinner" style="width:12px;height:12px;border-width:1.5px"></div></div>`;
+    const t2 = pk.type2 ? `<span class="type-badge t-${pk.type2}" style="font-size:8px;padding:1px 4px">${pk.type2}</span>` : '';
+    return `<div class="res-pk">${imgHtml}<div class="types-row res-pk-type" style="justify-content:center;gap:3px;margin:3px 0 2px"><span class="type-badge t-${pk.type1}" style="font-size:8px;padding:1px 4px">${pk.type1}</span>${t2}</div><div class="res-pk-name">${esc(pk.name)}</div><div class="res-pk-price">${pk.price}🪙</div></div>`;
+  }).join('');
+}
+
 function renderResults() {
   const el = document.getElementById('results-content');
   if (!el) return;
@@ -2154,7 +2337,7 @@ function renderResults() {
     return `<div class="res-card${rank===0?' winner':''}">
       ${rank===0 ? '<div style="font-family:var(--fd);font-size:8px;color:var(--yellow);margin-bottom:6px">★ WINNER</div>' : ''}
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <div style="width:24px;height:24px;border-radius:50%;background:${p.color||'#CC0000'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:11px;flex-shrink:0">${(p.name||'?')[0].toUpperCase()}</div>
+        <div style="width:28px;height:28px;border-radius:50%;background:${p.color||'#CC0000'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:12px;flex-shrink:0">${(p.name||'?')[0].toUpperCase()}</div>
         <div class="res-pname" style="margin:0">${esc(p.name)}</div>
       </div>
       <div class="res-stats">
@@ -2163,21 +2346,16 @@ function renderResults() {
         <span>${p.budget} left</span>
       </div>
       <div class="roster-grid">
-        ${roster.map(pk => `<div class="res-pk">
-          <div class="types-row res-pk-type" style="justify-content:center;gap:3px;margin-bottom:3px">
-            <span class="type-badge t-${pk.type1}" style="font-size:8px;padding:1px 4px">${pk.type1}</span>
-            ${pk.type2 ? `<span class="type-badge t-${pk.type2}" style="font-size:8px;padding:1px 4px">${pk.type2}</span>` : ''}
-          </div>
-          <div class="res-pk-name">${esc(pk.name)}</div>
-          <div class="res-pk-price">${pk.price}🪙</div>
-        </div>`).join('')}
-        ${!roster.length ? '<div style="color:var(--muted);font-size:11px;grid-column:1/-1;text-align:center;padding:10px">Nothing drafted</div>' : ''}
+        ${resRosterHtml(roster)}
       </div>
     </div>`;
   }).join('');
 
   const ctrl = document.getElementById('results-host-controls');
   if (ctrl) { ctrl.style.display = local.isHost ? 'flex' : 'none'; }
+
+  // Kick off sprite loading (won't re-fetch already cached)
+  loadResultSprites();
 }
 
 async function newDraft() {
