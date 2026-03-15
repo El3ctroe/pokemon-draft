@@ -610,9 +610,18 @@ const PLAYER_COLORS = ['#E74C3C','#3498DB','#2ECC71','#9B59B6','#F39C12','#1ABC9
 // ============================================================
 // FIREBASE
 // ============================================================
+const HARDCODED_CONFIG = {
+  apiKey: "AIzaSyARaalBxsXOP4wmNN8_Upv2vVEZOY_KV7o",
+  authDomain: "pokemon-draft-9126d.firebaseapp.com",
+  databaseURL: "https://pokemon-draft-9126d-default-rtdb.firebaseio.com",
+  projectId: "pokemon-draft-9126d",
+  storageBucket: "pokemon-draft-9126d.firebasestorage.app",
+  messagingSenderId: "1055324252945",
+  appId: "1:1055324252945:web:c481db8b68f0eba1f9fab0"
+};
+
 function tryInitFirebase() {
-  const cfg = getSavedConfig();
-  if (!cfg || !cfg.databaseURL) return false;
+  const cfg = getSavedConfig() || HARDCODED_CONFIG;
   try {
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     else firebase.app();
