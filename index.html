@@ -451,6 +451,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <span id="dh-progress" style="font-size:10px;color:var(--muted2)"></span>
     <div class="dh-right">
       <span class="budget-chip" id="dh-budget" style="display:none"></span>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="backToSplash()">🏠 Main Menu</button>
       <button id="dh-end-draft-btn" class="btn btn-outline-red btn-sm" style="display:none;font-size:11px" onclick="hostEndDraftToLobby()">⏹ End Draft</button>
       <span id="dh-host-badge" style="display:none" class="host-badge">HOST</span>
     </div>
@@ -475,9 +476,11 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <h1 class="game-title" style="text-align:center;margin-bottom:.5rem">🏆 FINAL ROSTERS</h1>
     <p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:2rem">The mystery is revealed!</p>
     <div id="results-content" class="results-grid"></div>
-    <div style="text-align:center;margin-top:2.5rem;display:flex;gap:12px;justify-content:center;flex-wrap:wrap" id="results-host-controls" style="display:none">
-      <button class="btn btn-yellow btn-lg" onclick="newDraft()">▶ New Draft (Same Players)</button>
-      <button class="btn btn-ghost btn-lg" onclick="backToSplash()">🏠 Back to Home</button>
+    <div style="text-align:center;margin-top:2.5rem;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <div id="results-host-controls" style="display:none;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-yellow btn-lg" onclick="newDraft()">▶ New Draft (Same Players)</button>
+      </div>
+      <button class="btn btn-ghost btn-lg" onclick="backToSplash()">🏠 Main Menu</button>
     </div>
   </div>
 </div>
@@ -1793,7 +1796,7 @@ function renderResults() {
   }).join('');
 
   const ctrl = document.getElementById('results-host-controls');
-  if (ctrl) ctrl.style.display = local.isHost ? 'flex' : 'none';
+  if (ctrl) { ctrl.style.display = local.isHost ? 'flex' : 'none'; }
 }
 
 async function newDraft() {
