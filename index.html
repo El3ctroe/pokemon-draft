@@ -504,6 +504,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <div class="dh-right">
       <span class="budget-chip" id="dh-budget" style="display:none"></span>
       <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="backToSplash()">🏠 Main Menu</button>
+      <button id="dh-autoadvance-btn" class="btn btn-sm" style="display:none;font-size:11px" onclick="hostToggleAutoAdvance()" title="Toggle auto-advance">⏭ Auto: OFF</button>
       <button id="dh-end-draft-btn" class="btn btn-outline-red btn-sm" style="display:none;font-size:11px" onclick="hostEndDraftToLobby()">⏹ End Draft</button>
       <span id="dh-host-badge" style="display:none" class="host-badge">HOST</span>
     </div>
@@ -1200,6 +1201,15 @@ function renderDraftHeader() {
   if (hostBadge) hostBadge.style.display = local.isHost ? 'inline-block' : 'none';
   const endBtn = document.getElementById('dh-end-draft-btn');
   if (endBtn) endBtn.style.display = local.isHost ? 'inline-flex' : 'none';
+  const aaBtn = document.getElementById('dh-autoadvance-btn');
+  if (aaBtn) {
+    aaBtn.style.display = local.isHost ? 'inline-flex' : 'none';
+    const isOn = !!roomState.settings?.autoAdvance;
+    aaBtn.textContent = `⏭ Auto: ${isOn ? 'ON' : 'OFF'}`;
+    aaBtn.style.background = isOn ? 'rgba(76,175,80,.2)' : 'transparent';
+    aaBtn.style.borderColor = isOn ? 'rgba(76,175,80,.5)' : '';
+    aaBtn.style.color = isOn ? '#A5D6A7' : '';
+  }
 }
 
 // ============================================================
@@ -1296,7 +1306,8 @@ function renderBidding(el) {
 
   // Mystery card — host ONLY sees name if they are a bidding participant
   const hostCanBid = roomState.settings?.hostCanBid || false;
-  const showHostName = local.isHost && hostCanBid;
+  // Host sees the name when they are NOT a bidder (pure host). If they're also a player, they're in the mystery like everyone else.
+  const showHostName = local.isHost && !hostCanBid;
   const mysteryCard = `
     <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}${isPaused ? ' paused-card' : ''}">
       <div class="mystery-silhouette">
@@ -1555,13 +1566,22 @@ function renderSold(el) {
       <div class="sold-winner">${winner ? esc(winner.name) : '?'} wins ${esc(auction.name)}!</div>
       <div class="sold-price">For ${auction.currentBid} coins · ${winner?.budget ?? 0} remaining</div>
     </div>
-    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
+    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div>${roomState.settings?.autoAdvance ? '<div style="font-size:10px;color:var(--muted);margin-top:6px" class="auto-advance-cd">Next in 5s…</div>' : ''}</div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
 
   if (!sprite) fetchAndStoreSprite(auction.name);
 
-  // Auto-advance if enabled
+  // Auto-advance if enabled — 5s cooldown so everyone can see the result
   if (roomState.settings?.autoAdvance && local.isHost) {
-    setTimeout(() => { if (roomState?.phase === 'sold') hostNextRound(); }, 3000);
+    let cd = 5;
+    const cdEl = el.querySelector('.auto-advance-cd');
+    const tick = setInterval(() => {
+      cd--;
+      if (cdEl) cdEl.textContent = `Next in ${cd}s…`;
+      if (cd <= 0) {
+        clearInterval(tick);
+        if (roomState?.phase === 'sold') hostNextRound();
+      }
+    }, 1000);
   }
 }
 
@@ -1588,13 +1608,22 @@ function renderUnsold(el) {
       <div class="unsold-ttl">No Sale — Passed</div>
       <div class="unsold-sub">${esc(auction.name)} was skipped</div>
     </div>
-    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div></div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
+    ${local.isHost ? `<div class="host-controls" style="max-width:420px"><div class="hc-label"><span class="host-badge">HOST</span> Controls</div><div class="hc-btns"><button class="btn btn-yellow btn-sm" onclick="hostNextRound()">▶ Next Pokémon</button></div>${roomState.settings?.autoAdvance ? '<div style="font-size:10px;color:var(--muted);margin-top:6px" class="auto-advance-cd">Next in 5s…</div>' : ''}</div>` : '<div class="timer-waiting">Waiting for host to continue...</div>'}`;
 
   if (!sprite) fetchAndStoreSprite(auction.name);
 
-  // Auto-advance if enabled
+  // Auto-advance if enabled — 5s cooldown
   if (roomState.settings?.autoAdvance && local.isHost) {
-    setTimeout(() => { if (roomState?.phase === 'unsold') hostNextRound(); }, 2500);
+    let cd = 5;
+    const cdEl = el.querySelector('.auto-advance-cd');
+    const tick = setInterval(() => {
+      cd--;
+      if (cdEl) cdEl.textContent = `Next in ${cd}s…`;
+      if (cd <= 0) {
+        clearInterval(tick);
+        if (roomState?.phase === 'unsold') hostNextRound();
+      }
+    }, 1000);
   }
 }
 
@@ -2077,6 +2106,13 @@ async function hostSkip() {
   } else {
     await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
   }
+}
+
+async function hostToggleAutoAdvance() {
+  if (!local.isHost) return;
+  const current = !!roomState.settings?.autoAdvance;
+  await db.ref(`rooms/${local.roomCode}/settings/autoAdvance`).set(!current);
+  showToast(`Auto-advance ${!current ? 'ON' : 'OFF'}`, false);
 }
 
 async function hostEndDraftToLobby() {
