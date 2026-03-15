@@ -1547,11 +1547,16 @@ async function hostForceSell() {
   const winner = fresh.players?.[auction.currentBidder];
   if (!winner) { showToast('Winner player not found', true); return; }
 
+  const rosterEntry = {
+    name: auction.name,
+    type1: auction.type1 || 'normal',
+    bst: auction.bst || 0,
+    price: auction.currentBid
+  };
+  if (auction.type2) rosterEntry.type2 = auction.type2; // only include if truthy
+
   const newBudget = winner.budget - auction.currentBid;
-  const newRoster = [...(winner.roster || []), {
-    name: auction.name, type1: auction.type1, type2: auction.type2,
-    bst: auction.bst, price: auction.currentBid
-  }];
+  const newRoster = [...(winner.roster || []), rosterEntry];
 
   try {
     await db.ref(`rooms/${local.roomCode}`).update({
@@ -1678,10 +1683,12 @@ async function hostRevealBlindBids() {
     const winner = players[winnerId];
     if (!winner) return;
     const newBudget = winner.budget - topAmount;
-    const newRoster = [...(winner.roster || []), {
-      name: auction.name, type1: auction.type1, type2: auction.type2,
-      bst: auction.bst, price: topAmount
-    }];
+    const blindRosterEntry = {
+      name: auction.name, type1: auction.type1 || 'normal',
+      bst: auction.bst || 0, price: topAmount
+    };
+    if (auction.type2) blindRosterEntry.type2 = auction.type2;
+    const newRoster = [...(winner.roster || []), blindRosterEntry];
     await db.ref(`rooms/${local.roomCode}`).update({
       phase: 'sold',
       blindRevealed: true,
