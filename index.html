@@ -1664,7 +1664,7 @@ async function fetchAndStoreSprite(name) {
   if (spriteFetchInProgress) return;
   spriteFetchInProgress = true;
   try {
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const slug = toPokeApiSlug(name);
     const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${slug}`);
     if (!r.ok) { spriteFetchInProgress = false; return; }
     const d = await r.json();
@@ -1674,6 +1674,26 @@ async function fetchAndStoreSprite(name) {
     }
   } catch(e) {}
   spriteFetchInProgress = false;
+}
+
+function toPokeApiSlug(name) {
+  // Map regional prefix words to PokeAPI suffix
+  const regionMap = {
+    'alolan': 'alola', 'alola': 'alola',
+    'galarian': 'galar', 'galar': 'galar',
+    'hisuian': 'hisui', 'hisui': 'hisui',
+    'paldean': 'paldea', 'paldea': 'paldea',
+  };
+  const words = name.trim().split(/\s+/);
+  const firstLower = words[0].toLowerCase();
+  if (words.length >= 2 && regionMap[firstLower]) {
+    // "Alolan Ninetales" → "ninetales-alola"
+    const region = regionMap[firstLower];
+    const pokeName = words.slice(1).join('-').toLowerCase().replace(/[^a-z0-9-]+/g, '');
+    return `${pokeName}-${region}`;
+  }
+  // Normal: "Charizard" → "charizard", "Mr. Mime" → "mr-mime"
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
 // ============================================================
