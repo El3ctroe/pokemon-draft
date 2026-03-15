@@ -172,6 +172,19 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 .mystery-card.has-bid{border-color:var(--green)}
 .mystery-card.sold-card{border-color:var(--yellow)}
 .mystery-card.paused-card{border-color:rgba(255,193,7,.5);opacity:.85}
+/* Hints */
+.hints-panel{background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;width:100%;max-width:340px;margin-top:2px}
+.hints-title{font-size:9px;font-family:var(--fd);color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:9px}
+.hints-btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.hint-btn{background:var(--card);border:1.5px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--fb);font-size:11px;font-weight:700;padding:6px 10px;cursor:pointer;transition:all .14s;display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:70px}
+.hint-btn:hover{border-color:var(--yellow);color:var(--yellow)}
+.hint-btn:disabled{opacity:.4;cursor:not-allowed}
+.hint-btn .hb-icon{font-size:16px}
+.hint-btn .hb-name{font-size:10px}
+.hint-btn .hb-cost{font-size:10px;color:var(--yellow);font-weight:900}
+.hint-result{background:var(--card);border:1.5px solid rgba(255,203,5,.3);border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.7;margin-top:2px}
+.hint-result .hr-type{font-size:9px;font-weight:700;color:var(--yellow);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.hint-result .hr-text{color:var(--text)}
 .mystery-silhouette{width:130px;height:130px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;position:relative}
 .mystery-silhouette svg{width:100%;height:100%}
 .poke-sprite{width:130px;height:130px;object-fit:contain;margin-bottom:12px}
@@ -428,6 +441,14 @@ input:focus,textarea:focus{border-color:var(--yellow)}
           <option value="1">Auto-advance to next Pokémon</option>
         </select>
         <div class="hint">Automatically start next auction after sold/skipped?</div>
+      </div>
+      <div class="field-grp" style="margin-top:12px;margin-bottom:0">
+        <label class="lbl">Hints System</label>
+        <select id="s-hints" style="background:var(--surf);border:1.5px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--fb);font-size:14px;padding:9px 13px;outline:none;width:100%">
+          <option value="0">Hints disabled</option>
+          <option value="1">Hints enabled</option>
+        </select>
+        <div class="hint">Players can spend coins to reveal clues about the mystery Pokémon — Pokédex entry (25🪙), ability (50🪙), random stat (10🪙). Only the buyer sees it.</div>
       </div>
     </div>
 
@@ -878,6 +899,7 @@ async function openLobby() {
   const timerSec = Math.max(10, parseInt(document.getElementById('s-timer').value) || 60);
   const replacementTimerSec = Math.max(10, parseInt(document.getElementById('s-replacement-timer').value) || 60);
   const autoAdvance = document.getElementById('s-autoadvance').value === '1';
+  const hintsEnabled = document.getElementById('s-hints').value === '1';
   const draftText = document.getElementById('draft-textarea').value;
   let draftList = parseDraftList(draftText);
   if (!draftList.length) { show('setup-err','Please add at least one Pokémon to the draft list'); return; }
@@ -902,7 +924,7 @@ async function openLobby() {
   const roomData = {
     hostSecret,
     phase: 'lobby',
-    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementCount, timerSec, replacementTimerSec, autoAdvance },
+    settings: { budget, maxTeamSize: maxTeam, hostCanBid, replacementCount, timerSec, replacementTimerSec, autoAdvance, hintsEnabled },
     draftList,
     draftIdx: 0,
     roundNum: 1,
@@ -1132,7 +1154,7 @@ async function advanceToNextPokemon() {
     };
     addLogEntry(`⚡ Replacement Round ${replacementRoundsRun + 1}/${replacementCount}: New Pokémon up! No BST shown.`, 'nom');
     spriteFetchInProgress = false;
-    await db.ref(`rooms/${local.roomCode}`).update(update);
+    await db.ref(`rooms/${local.roomCode}`).update({...update, playerHints: null});
     scheduleHostTick();
     return;
   }
@@ -1168,7 +1190,7 @@ async function advanceToNextPokemon() {
 
   addLogEntry(`Round ${idx + 1}: New Pokémon up for auction! (${pokemon.type1}${pokemon.type2 ? '/'+pokemon.type2 : ''}, BST ${pokemon.bst})`, 'nom');
   spriteFetchInProgress = false;
-  await db.ref(`rooms/${local.roomCode}`).update(update);
+  await db.ref(`rooms/${local.roomCode}`).update({...update, playerHints: null});
 }
 
 // ============================================================
@@ -1308,6 +1330,12 @@ function renderBidding(el) {
   const hostCanBid = roomState.settings?.hostCanBid || false;
   // Host sees the name when they are NOT a bidder (pure host). If they're also a player, they're in the mystery like everyone else.
   const showHostName = local.isHost && !hostCanBid;
+  const hintsEnabled = !!roomState.settings?.hintsEnabled;
+
+  // Load my purchased hints for this auction
+  const myHints = (roomState.playerHints || {})[local.playerId] || {};
+  const canSeeHints = (local.playerId && myHints) || showHostName;
+
   const mysteryCard = `
     <div class="mystery-card${auction.currentBidder ? ' has-bid' : ''}${isPaused ? ' paused-card' : ''}">
       <div class="mystery-silhouette">
@@ -1329,7 +1357,9 @@ function renderBidding(el) {
       </div>
       ${auction.isReplacement ? '<div style="font-size:10px;color:#CE93D8;margin-bottom:4px;font-weight:700;letter-spacing:1px">⚡ REPLACEMENT ROUND</div>' : ''}
       ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${showHostName ? esc(auction.name) : '(hidden — you are not bidding)'}${auction.isReplacement && showHostName ? ` · BST ${auction.bst}` : auction.isReplacement ? ` · BST ${auction.bst}` : ''}</div>` : ''}
-    </div>`;
+    </div>
+    ${buildHintsPanel(hintsEnabled, myHints, myPlayer, showHostName)}`;
+
 
   // Timer
   let timerHtml = '';
@@ -1437,6 +1467,140 @@ function renderBidding(el) {
 
   el.innerHTML = mysteryCard + infoHtml + timerHtml + doneStatusHtml + bidHtml + hostCtrlHtml;
   startCountdownDisplay();
+}
+
+// ============================================================
+// HINTS SYSTEM
+// ============================================================
+function buildHintsPanel(hintsEnabled, myHints, myPlayer, showHostName) {
+  // Non-bidding host can see all hints passively (no buy buttons shown)
+  if (showHostName) {
+    const hostHints = roomState.playerHints || {};
+    const allHints = {};
+    Object.values(hostHints).forEach(ph => {
+      if (ph.dex) allHints.dex = ph.dex;
+      if (ph.ability) allHints.ability = ph.ability;
+      if (ph.stat) allHints.stat = ph.stat;
+    });
+    if (!Object.keys(allHints).length) return '';
+    return `<div class="hints-panel">
+      <div class="hints-title">🔍 Purchased Hints (Host View)</div>
+      ${allHints.dex ? `<div class="hint-result"><div class="hr-type">📖 Pokédex Entry</div><div class="hr-text">${esc(allHints.dex)}</div></div>` : ''}
+      ${allHints.ability ? `<div class="hint-result" style="margin-top:6px"><div class="hr-type">✨ Ability</div><div class="hr-text">${esc(allHints.ability)}</div></div>` : ''}
+      ${allHints.stat ? `<div class="hint-result" style="margin-top:6px"><div class="hr-type">📊 Stat Hint</div><div class="hr-text">${esc(allHints.stat)}</div></div>` : ''}
+    </div>`;
+  }
+
+  if (!hintsEnabled || !myPlayer) return '';
+
+  const hasDex = !!myHints.dex;
+  const hasAbility = !!myHints.ability;
+  const hasStat = !!myHints.stat;
+
+  const dexDisabled = hasDex || myPlayer.budget < 25 ? 'disabled' : '';
+  const abilityDisabled = hasAbility || myPlayer.budget < 50 ? 'disabled' : '';
+  const statDisabled = hasStat || myPlayer.budget < 10 ? 'disabled' : '';
+
+  const revealedHtml = [
+    hasDex ? `<div class="hint-result"><div class="hr-type">📖 Pokédex Entry</div><div class="hr-text">${esc(myHints.dex)}</div></div>` : '',
+    hasAbility ? `<div class="hint-result" style="margin-top:6px"><div class="hr-type">✨ Ability</div><div class="hr-text">${esc(myHints.ability)}</div></div>` : '',
+    hasStat ? `<div class="hint-result" style="margin-top:6px"><div class="hr-type">📊 Stat Hint</div><div class="hr-text">${esc(myHints.stat)}</div></div>` : ''
+  ].filter(Boolean).join('');
+
+  return `<div class="hints-panel">
+    <div class="hints-title">🔍 Hints</div>
+    <div class="hints-btns">
+      <button class="hint-btn" onclick="buyHint('dex')" ${dexDisabled} title="Pokédex entry">
+        <span class="hb-icon">📖</span>
+        <span class="hb-name">${hasDex ? 'Got it' : 'Pokédex'}</span>
+        <span class="hb-cost">${hasDex ? '✓' : '25🪙'}</span>
+      </button>
+      <button class="hint-btn" onclick="buyHint('ability')" ${abilityDisabled} title="Ability">
+        <span class="hb-icon">✨</span>
+        <span class="hb-name">${hasAbility ? 'Got it' : 'Ability'}</span>
+        <span class="hb-cost">${hasAbility ? '✓' : '50🪙'}</span>
+      </button>
+      <button class="hint-btn" onclick="buyHint('stat')" ${statDisabled} title="Random stat">
+        <span class="hb-icon">📊</span>
+        <span class="hb-name">${hasStat ? 'Got it' : 'Rnd Stat'}</span>
+        <span class="hb-cost">${hasStat ? '✓' : '10🪙'}</span>
+      </button>
+    </div>
+    ${revealedHtml}
+    <div id="hint-loading" style="display:none;font-size:11px;color:var(--muted);text-align:center;padding:6px">
+      <span class="spinner" style="width:12px;height:12px;border-width:1.5px;vertical-align:middle"></span> Fetching hint…
+    </div>
+  </div>`;
+}
+
+const HINT_COSTS = { dex: 25, ability: 50, stat: 10 };
+const STAT_NAMES = ['hp', 'attack', 'defense', 'special-attack', 'special-defense', 'speed'];
+const STAT_LABELS = { hp: 'HP', attack: 'Attack', defense: 'Defense', 'special-attack': 'Sp. Atk', 'special-defense': 'Sp. Def', speed: 'Speed' };
+
+async function buyHint(type) {
+  if (!local.playerId || !local.roomCode) return;
+  const auction = roomState?.currentAuction;
+  const myPlayer = roomState?.players?.[local.playerId];
+  if (!auction || !myPlayer) return;
+
+  const cost = HINT_COSTS[type];
+  if (myPlayer.budget < cost) { showToast(`Need ${cost} coins for this hint`, true); return; }
+
+  // Check not already bought
+  const existing = (roomState.playerHints || {})[local.playerId] || {};
+  if (existing[type]) { showToast('Already purchased!', true); return; }
+
+  // Deduct coins immediately (optimistic)
+  const loadingEl = document.getElementById('hint-loading');
+  if (loadingEl) loadingEl.style.display = 'block';
+
+  try {
+    // Fetch from PokeAPI
+    const pokeName = toPokeApiSlug(auction.name);
+    const r = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokeName}`);
+    if (!r.ok) throw new Error('Could not load Pokémon data');
+    const data = await r.json();
+
+    let hintText = '';
+    if (type === 'dex') {
+      // Get flavor text from species endpoint
+      const speciesR = await fetch(data.species.url);
+      if (!speciesR.ok) throw new Error('Could not load species data');
+      const species = await speciesR.json();
+      const entry = species.flavor_text_entries.find(e => e.language.name === 'en');
+      hintText = entry ? entry.flavor_text.replace(/\f|\n/g, ' ') : 'No Pokédex entry found.';
+    } else if (type === 'ability') {
+      const abilities = data.abilities.filter(a => !a.is_hidden);
+      const picked = abilities[Math.floor(Math.random() * abilities.length)] || data.abilities[0];
+      if (picked) {
+        const aR = await fetch(picked.ability.url);
+        const aData = await aR.json();
+        const aEntry = aData.effect_entries.find(e => e.language.name === 'en');
+        const aName = picked.ability.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        hintText = `${aName}: ${aEntry ? aEntry.short_effect : 'No description.'}`;
+      } else {
+        hintText = 'No ability data found.';
+      }
+    } else if (type === 'stat') {
+      const shuffled = [...STAT_NAMES].sort(() => Math.random() - 0.5);
+      const statName = shuffled[0];
+      const stat = data.stats.find(s => s.stat.name === statName);
+      hintText = `${STAT_LABELS[statName]}: ${stat ? stat.base_stat : '?'}`;
+    }
+
+    // Deduct coins and store hint in Firebase
+    const newBudget = myPlayer.budget - cost;
+    await db.ref(`rooms/${local.roomCode}`).update({
+      [`players/${local.playerId}/budget`]: newBudget,
+      [`playerHints/${local.playerId}/${type}`]: hintText
+    });
+    addLogEntry(`${esc(myPlayer.name)} bought a ${type === 'dex' ? 'Pokédex' : type === 'ability' ? 'Ability' : 'Stat'} hint for ${cost} coins`, 'info');
+
+  } catch(e) {
+    showToast('Hint failed: ' + e.message, true);
+  }
+
+  if (loadingEl) loadingEl.style.display = 'none';
 }
 
 function renderBlindBidding(el) {
