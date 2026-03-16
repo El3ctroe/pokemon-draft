@@ -376,7 +376,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
             onkeydown="if(event.key==='Enter')document.getElementById('join-name').focus()">
         </div>
         <div class="field-grp"><label class="lbl">Your Name</label>
-          <input type="text" id="join-name" placeholder="e.g. Matthew, Cock, Nolan" maxlength="18"
+          <input type="text" id="join-name" placeholder="e.g. Ash, Misty, Brock" maxlength="18"
             onkeydown="if(event.key==='Enter')doJoin()">
         </div>
         <div id="join-err" style="display:none" class="err"></div>
@@ -626,28 +626,62 @@ input:focus,textarea:focus{border-color:var(--yellow)}
 </div>
 
 <!-- EDIT BUDGET -->
-<div id="modal-edit-budget" class="modal-overlay" onclick="if(event.target===this)document.getElementById('modal-edit-budget').classList.remove('active')">
-  <div class="modal-box" style="max-width:360px">
-    <button class="modal-close" onclick="document.getElementById('modal-edit-budget').classList.remove('active')">✕</button>
-    <div class="card-title">💰 Edit Budget</div>
-    <div style="margin-bottom:14px">
-      <strong id="eb-player-name" style="font-size:16px"></strong>
-      <div style="font-size:12px;color:var(--muted);margin-top:3px">Current: <span id="eb-current" style="color:var(--yellow);font-weight:700"></span> coins</div>
+<div id="modal-edit-budget" class="modal-overlay" onclick="if(event.target===this)closeEditPlayer()">
+  <div class="modal-box" style="max-width:520px">
+    <button class="modal-close" onclick="closeEditPlayer()">✕</button>
+    <div class="card-title" style="margin-bottom:4px">✏️ Edit Player</div>
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+      <div id="ep-avatar" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#fff;flex-shrink:0;background:#CC0000"></div>
+      <div>
+        <strong id="eb-player-name" style="font-size:15px"></strong>
+        <div style="font-size:11px;color:var(--muted)" id="ep-stats"></div>
+      </div>
     </div>
-    <div class="field-grp">
-      <label class="lbl">Set New Budget</label>
-      <input type="number" id="eb-input" min="0" placeholder="New amount"
-        onkeydown="if(event.key==='Enter')doEditBudget()">
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--border)">
+      <button class="ep-tab active" id="ep-tab-budget" onclick="epSwitchTab('budget')" style="flex:1;background:none;border:none;border-bottom:2px solid var(--yellow);color:var(--yellow);font-family:var(--fb);font-weight:700;font-size:12px;padding:7px;cursor:pointer">💰 Budget</button>
+      <button class="ep-tab" id="ep-tab-roster" onclick="epSwitchTab('roster')" style="flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--fb);font-weight:700;font-size:12px;padding:7px;cursor:pointer">🎒 Roster</button>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      <button class="btn btn-ghost btn-sm" onclick="eb_add(50)">+50</button>
-      <button class="btn btn-ghost btn-sm" onclick="eb_add(100)">+100</button>
-      <button class="btn btn-ghost btn-sm" onclick="eb_add(200)">+200</button>
-      <button class="btn btn-ghost btn-sm" onclick="eb_add(-50)">-50</button>
-      <button class="btn btn-ghost btn-sm" onclick="eb_add(-100)">-100</button>
+
+    <!-- Budget tab -->
+    <div id="ep-panel-budget">
+      <div class="field-grp">
+        <label class="lbl">Set New Budget</label>
+        <input type="number" id="eb-input" min="0" placeholder="New amount" onkeydown="if(event.key==='Enter')doEditBudget()">
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Current: <span id="eb-current" style="color:var(--yellow);font-weight:700"></span> coins</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn btn-ghost btn-sm" onclick="eb_add(50)">+50</button>
+        <button class="btn btn-ghost btn-sm" onclick="eb_add(100)">+100</button>
+        <button class="btn btn-ghost btn-sm" onclick="eb_add(200)">+200</button>
+        <button class="btn btn-ghost btn-sm" onclick="eb_add(-50)">-50</button>
+        <button class="btn btn-ghost btn-sm" onclick="eb_add(-100)">-100</button>
+      </div>
+      <div id="eb-err" style="display:none" class="err"></div>
+      <button class="btn btn-yellow" style="width:100%" onclick="doEditBudget()">Set Budget</button>
     </div>
-    <div id="eb-err" style="display:none" class="err"></div>
-    <button class="btn btn-yellow" style="width:100%" onclick="doEditBudget()">Set Budget</button>
+
+    <!-- Roster tab -->
+    <div id="ep-panel-roster" style="display:none">
+      <div id="ep-roster-list" style="margin-bottom:14px;max-height:240px;overflow-y:auto"></div>
+      <div style="background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="font-size:10px;color:var(--yellow);font-family:var(--fd);letter-spacing:1px;margin-bottom:9px">+ ADD POKÉMON</div>
+        <div class="two-col" style="margin-bottom:8px">
+          <div class="field-grp" style="margin-bottom:0"><label class="lbl">Name</label><input type="text" id="ep-add-name" placeholder="e.g. Charizard" maxlength="30"></div>
+          <div class="field-grp" style="margin-bottom:0"><label class="lbl">Price paid (🪙)</label><input type="number" id="ep-add-price" placeholder="0" min="0" value="0"></div>
+        </div>
+        <div class="two-col" style="margin-bottom:8px">
+          <div class="field-grp" style="margin-bottom:0"><label class="lbl">Type 1</label><input type="text" id="ep-add-type1" placeholder="e.g. fire" maxlength="12"></div>
+          <div class="field-grp" style="margin-bottom:0"><label class="lbl">Type 2 (optional)</label><input type="text" id="ep-add-type2" placeholder="e.g. flying" maxlength="12"></div>
+        </div>
+        <div class="two-col" style="margin-bottom:8px">
+          <div class="field-grp" style="margin-bottom:0"><label class="lbl">BST</label><input type="number" id="ep-add-bst" placeholder="e.g. 534" min="0"></div>
+        </div>
+        <div id="ep-add-err" style="display:none" class="err" style="margin-bottom:8px"></div>
+        <button class="btn btn-green" style="width:100%;font-size:13px" onclick="epAddPokemon()">Add to Roster</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2445,17 +2479,114 @@ function renderLog() {
 // ============================================================
 // EDIT BUDGET
 // ============================================================
+function closeEditPlayer() {
+  document.getElementById('modal-edit-budget').classList.remove('active');
+}
+
+function epSwitchTab(tab) {
+  document.getElementById('ep-panel-budget').style.display = tab === 'budget' ? 'block' : 'none';
+  document.getElementById('ep-panel-roster').style.display = tab === 'roster' ? 'block' : 'none';
+  document.getElementById('ep-tab-budget').style.borderBottomColor = tab === 'budget' ? 'var(--yellow)' : 'transparent';
+  document.getElementById('ep-tab-budget').style.color = tab === 'budget' ? 'var(--yellow)' : 'var(--muted)';
+  document.getElementById('ep-tab-roster').style.borderBottomColor = tab === 'roster' ? 'var(--yellow)' : 'transparent';
+  document.getElementById('ep-tab-roster').style.color = tab === 'roster' ? 'var(--yellow)' : 'var(--muted)';
+  if (tab === 'roster') epRenderRoster();
+}
+
 function openEditBudget(playerId) {
   if (!local.isHost) return;
   const player = roomState?.players?.[playerId];
   if (!player) return;
   editingPlayerId = playerId;
+  // Header
   document.getElementById('eb-player-name').textContent = player.name;
+  const avatarEl = document.getElementById('ep-avatar');
+  avatarEl.textContent = (player.name||'?')[0].toUpperCase();
+  avatarEl.style.background = player.color || '#CC0000';
+  const maxTeam = roomState?.settings?.maxTeamSize || 6;
+  document.getElementById('ep-stats').textContent = `${(player.roster||[]).length}/${maxTeam} Pokémon · ${player.budget} coins`;
+  // Budget tab
   document.getElementById('eb-current').textContent = player.budget;
   document.getElementById('eb-input').value = player.budget;
   document.getElementById('eb-err').style.display = 'none';
+  // Reset to budget tab
+  epSwitchTab('budget');
   document.getElementById('modal-edit-budget').classList.add('active');
   setTimeout(() => document.getElementById('eb-input').focus(), 100);
+}
+
+function epRenderRoster() {
+  const player = roomState?.players?.[editingPlayerId];
+  if (!player) return;
+  const roster = player.roster || [];
+  const maxTeam = roomState?.settings?.maxTeamSize || 6;
+  const el = document.getElementById('ep-roster-list');
+  if (!roster.length) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">No Pokémon on this team yet</div>`;
+    return;
+  }
+  el.innerHTML = roster.map((pk, idx) => `
+    <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:900;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(pk.name)}</div>
+        <div style="font-size:10px;color:var(--muted);display:flex;gap:5px;align-items:center;margin-top:2px;flex-wrap:wrap">
+          <span class="type-badge t-${pk.type1}" style="font-size:9px;padding:1px 5px">${pk.type1}</span>
+          ${pk.type2 ? `<span class="type-badge t-${pk.type2}" style="font-size:9px;padding:1px 5px">${pk.type2}</span>` : ''}
+          <span style="color:var(--yellow);font-weight:700">${pk.price}🪙</span>
+          ${pk.bst ? `<span>BST ${pk.bst}</span>` : ''}
+        </div>
+      </div>
+      <button class="btn btn-outline-red btn-sm" style="font-size:11px;flex-shrink:0" onclick="epRemovePokemon(${idx})">✕ Remove</button>
+    </div>`).join('');
+  // Update stats
+  document.getElementById('ep-stats').textContent = `${roster.length}/${maxTeam} Pokémon · ${player.budget} coins`;
+}
+
+async function epRemovePokemon(idx) {
+  const player = roomState?.players?.[editingPlayerId];
+  if (!player) return;
+  const roster = [...(player.roster || [])];
+  const removed = roster[idx];
+  if (!removed) return;
+  if (!confirm(`Remove ${removed.name} from ${player.name}'s team?`)) return;
+  roster.splice(idx, 1);
+  try {
+    await db.ref(`rooms/${local.roomCode}/players/${editingPlayerId}/roster`).set(roster);
+    addLogEntry(`🗑️ Host removed ${esc(removed.name)} from ${esc(player.name)}'s team`, 'info');
+    epRenderRoster();
+    // Update header stats
+    document.getElementById('ep-stats').textContent = `${roster.length}/${roomState?.settings?.maxTeamSize||6} Pokémon · ${player.budget} coins`;
+  } catch(e) { showToast('Remove failed: ' + e.message, true); }
+}
+
+async function epAddPokemon() {
+  const player = roomState?.players?.[editingPlayerId];
+  if (!player) return;
+  const name = document.getElementById('ep-add-name').value.trim();
+  const type1 = document.getElementById('ep-add-type1').value.trim().toLowerCase();
+  const type2 = document.getElementById('ep-add-type2').value.trim().toLowerCase() || null;
+  const bst = parseInt(document.getElementById('ep-add-bst').value) || 0;
+  const price = parseInt(document.getElementById('ep-add-price').value) || 0;
+  const errEl = document.getElementById('ep-add-err');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Enter a Pokémon name'; errEl.style.display = 'block'; return; }
+  if (!type1) { errEl.textContent = 'Enter at least Type 1'; errEl.style.display = 'block'; return; }
+  const newEntry = { name, type1, bst, price };
+  if (type2) newEntry.type2 = type2;
+  const roster = [...(player.roster || []), newEntry];
+  try {
+    await db.ref(`rooms/${local.roomCode}/players/${editingPlayerId}/roster`).set(roster);
+    addLogEntry(`➕ Host added ${esc(name)} to ${esc(player.name)}'s team`, 'info');
+    // Clear inputs
+    document.getElementById('ep-add-name').value = '';
+    document.getElementById('ep-add-type1').value = '';
+    document.getElementById('ep-add-type2').value = '';
+    document.getElementById('ep-add-bst').value = '';
+    document.getElementById('ep-add-price').value = '0';
+    epRenderRoster();
+    document.getElementById('ep-stats').textContent = `${roster.length}/${roomState?.settings?.maxTeamSize||6} Pokémon · ${player.budget} coins`;
+    showToast(`${name} added to ${player.name}'s team`, false);
+  } catch(e) { errEl.textContent = 'Failed: ' + e.message; errEl.style.display = 'block'; }
 }
 
 function eb_add(delta) {
@@ -2472,7 +2603,7 @@ async function doEditBudget() {
     await db.ref(`rooms/${local.roomCode}/players/${editingPlayerId}/budget`).set(newBudget);
     const pName = roomState?.players?.[editingPlayerId]?.name || 'Player';
     addLogEntry(`💰 Host set ${pName}'s budget to ${newBudget}`, 'info');
-    document.getElementById('modal-edit-budget').classList.remove('active');
+    closeEditPlayer();
     showToast(`${pName}'s budget updated to ${newBudget}`, false);
   } catch(e) { errEl.textContent='Failed: ' + e.message; errEl.style.display='block'; }
 }
