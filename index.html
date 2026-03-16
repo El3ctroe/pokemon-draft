@@ -1353,12 +1353,12 @@ function renderBidding(el) {
       </div>
       <div class="bst-display">
         <div class="bst-label">Base Stat Total</div>
-        <span class="bst-num">${auction.isReplacement ? '???' : (auction.bst || '???')}</span>
+        <span class="bst-num">${auction.isReplacement ? '? ? ?' : (auction.bst || '???')}</span>
       </div>
       ${auction.isReplacement ? '<div style="font-size:10px;color:#CE93D8;margin-bottom:4px;font-weight:700;letter-spacing:1px">⚡ REPLACEMENT ROUND</div>' : ''}
       ${local.isHost ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;padding:6px;background:rgba(204,0,0,.08);border-radius:6px;border:1px solid rgba(204,0,0,.2)">🔒 HOST: ${showHostName ? esc(auction.name) : '(hidden — you are not bidding)'}${auction.isReplacement && showHostName ? ` · BST ${auction.bst}` : auction.isReplacement ? ` · BST ${auction.bst}` : ''}</div>` : ''}
     </div>
-    ${buildHintsPanel(hintsEnabled, myHints, myPlayer, showHostName)}`;
+    ${buildHintsPanel(hintsEnabled && !auction.isReplacement, myHints, myPlayer, showHostName)}`;
 
 
   // Timer
