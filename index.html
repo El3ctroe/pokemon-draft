@@ -376,7 +376,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
             onkeydown="if(event.key==='Enter')document.getElementById('join-name').focus()">
         </div>
         <div class="field-grp"><label class="lbl">Your Name</label>
-          <input type="text" id="join-name" placeholder="e.g. Ash, Misty, Brock" maxlength="18"
+          <input type="text" id="join-name" placeholder="e.g. Arnaldo, Arnaldo, Arnaldo" maxlength="18"
             onkeydown="if(event.key==='Enter')doJoin()">
         </div>
         <div id="join-err" style="display:none" class="err"></div>
@@ -505,10 +505,10 @@ input:focus,textarea:focus{border-color:var(--yellow)}
         <div id="import-panel" style="display:none;margin-top:10px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:12px">
           <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.7">
             Paste team data below. Each line = one player.<br>
-            Format: <code style="background:var(--card);padding:1px 4px;border-radius:3px;font-size:10px">PlayerName,PokémonName,Type1,Type2,Cost,PokémonName,Type1,Type2,Cost,...</code><br>
-            Type2 can be blank. Trailing comma is fine.
+            Format: <code style="background:var(--card);padding:1px 4px;border-radius:3px;font-size:10px">PlayerName,Pokémon,Type1,Type2,Cost,...,PlayerCoins</code><br>
+            Type2 can be blank. Last number on the line = player's remaining coins.
           </div>
-          <textarea id="import-textarea" rows="5" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60," style="font-size:12px;font-family:monospace"></textarea>
+          <textarea id="import-textarea" rows="5" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,1000&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60,750" style="font-size:12px;font-family:monospace"></textarea>
           <div id="import-err" style="display:none" class="err"></div>
           <div id="import-preview" style="display:none;margin-top:8px"></div>
           <div style="display:flex;gap:8px;margin-top:8px">
@@ -712,10 +712,10 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <button class="modal-close" onclick="closeImportModal()">✕</button>
     <div class="card-title" style="margin-bottom:6px">📥 Import / Overwrite Teams</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
-      Each line = one player. The player name must match exactly (case-insensitive).<br>
-      <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:10px;display:block;margin-top:5px">PlayerName,Pokémon,Type1,Type2,Cost,Pokémon,Type1,Type2,Cost,...</code>
+      Each line = one player. The player name must match exactly (case-insensitive). Last number = player's remaining coins.<br>
+      <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:10px;display:block;margin-top:5px">PlayerName,Pokémon,Type1,Type2,Cost,Pokémon,Type1,Type2,Cost,...,PlayerCoins</code>
     </p>
-    <textarea id="modal-import-textarea" rows="7" style="font-size:12px;font-family:monospace" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60,"></textarea>
+    <textarea id="modal-import-textarea" rows="7" style="font-size:12px;font-family:monospace" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,1000&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60,750"></textarea>
     <div id="modal-import-err" style="display:none" class="err"></div>
     <div id="modal-import-preview" style="display:none;margin-top:10px"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -897,35 +897,26 @@ function loadFile(event) {
 
 function loadSampleList() {
   document.getElementById('draft-textarea').value =
-`Grimmsnarl,Dark,Fairy,510
-Charizard,Fire,Flying,534
-Incineroar,Fire,Dark,530
-Garganacl,Rock,,550
-Mimikyu,Ghost,Fairy,476
-Manectric,Electric,,475
-Pelipper,Water,Flying,430
-Duraludon,Steel,Dragon,535
-Torkoal,Fire,,470
-Ferrothorn,Grass,Steel,489
-Annihilape,Fighting,Ghost,535
-Shuckle,Bug,Rock,505
-Blaziken,Fire,Fighting,530
-Gastrodon,Water,Ground,475
-Talonflame,Fire,Flying,499
-Alakazam,Psychic,,500
-Gengar,Ghost,Poison,500
-Dragonite,Dragon,Flying,600
-Empoleon,Water,Steel,530
-Arcanine,Fire,,555
-Garchomp,Dragon,Ground,600
-Urshifu,Fighting,Dark,550
-Amoonguss,Grass,Poison,464
-Weezing,Poison,,490
-Scrafty,Dark,Fighting,488
-Mawile,Steel,Fairy,380
-Darmanitan-Galar,Ice,,480
-Slaking,Normal,,670
-Volcarona,Bug,Fire,550`;
+`Charizard,Fire,Flying,534,50
+Blastoise,Water,,530,50
+Venusaur,Grass,Poison,525,50
+Pikachu,Electric,,320,5
+Mewtwo,Psychic,,680,200
+Gengar,Ghost,Poison,500,30
+Snorlax,Normal,,540,40
+Dragonite,Dragon,Flying,600,100
+Lapras,Water,Ice,535,40
+Alakazam,Psychic,,500,30
+Machamp,Fighting,,505,25
+Gyarados,Water,Flying,540,50
+Arcanine,Fire,,555,50
+Raichu,Electric,,485,20
+Nidoking,Poison,Ground,505,30
+Clefable,Fairy,,483,20
+Eevee,Normal,,325,5
+Slowbro,Water,Psychic,490,25
+Jolteon,Electric,,525,40
+Flareon,Fire,,525,40`;
   previewDraftList();
 }
 
@@ -2370,19 +2361,32 @@ function parseImportText(text) {
     const parts = line.replace(/,\s*$/, '').split(',').map(p => p.trim());
     if (!parts[0]) continue;
     const playerName = parts[0];
+
+    // Last field is the player's budget if it's a plain number
+    let budget = null;
+    let pokeParts = parts.slice(1);
+    if (pokeParts.length > 0) {
+      const lastVal = pokeParts[pokeParts.length - 1];
+      if (lastVal !== '' && !isNaN(parseInt(lastVal)) && pokeParts.length % 4 !== 0) {
+        // Doesn't divide evenly into groups of 4 without this field, so it's the budget
+        budget = parseInt(lastVal);
+        pokeParts = pokeParts.slice(0, -1);
+      }
+    }
+
     const roster = [];
     // Each Pokémon takes 4 fields: name, type1, type2, cost
-    for (let i = 1; i + 2 < parts.length; i += 4) {
-      const pkName = parts[i];
-      const type1 = (parts[i+1] || '').toLowerCase();
-      const type2 = (parts[i+2] || '').toLowerCase() || null;
-      const cost = parseInt(parts[i+3]) || 0;
-      if (!pkName || !type1) { errors.push(`Line ${li+1}: Missing name or type1 for entry ${Math.floor((i-1)/4)+1}`); continue; }
+    for (let i = 0; i + 2 < pokeParts.length; i += 4) {
+      const pkName = pokeParts[i];
+      const type1 = (pokeParts[i+1] || '').toLowerCase();
+      const type2 = (pokeParts[i+2] || '').toLowerCase() || null;
+      const cost = parseInt(pokeParts[i+3]) || 0;
+      if (!pkName || !type1) { errors.push(`Line ${li+1}: Missing name or type1 for entry ${Math.floor(i/4)+1}`); continue; }
       const entry = { name: pkName, type1, bst: 0, price: cost };
       if (type2) entry.type2 = type2;
       roster.push(entry);
     }
-    results.push({ playerName, roster });
+    results.push({ playerName, roster, budget });
   }
   return { results, errors };
 }
@@ -2395,14 +2399,17 @@ function buildImportPreviewHtml(results, players) {
     const matchLabel = match
       ? `<span style="color:var(--green);font-size:10px;font-weight:700">✓ matches ${esc(match[1].name)}</span>`
       : `<span style="color:var(--red2);font-size:10px;font-weight:700">⚠ no match (will skip)</span>`;
+    const budgetLabel = r.budget !== null
+      ? `<span style="color:var(--yellow);font-size:10px;font-weight:700">💰 ${r.budget} coins</span>`
+      : '';
     const pkList = r.roster.map(pk =>
       `<span style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;white-space:nowrap">
         ${esc(pk.name)} <span class="type-badge t-${pk.type1}" style="font-size:8px;padding:0 4px">${pk.type1}</span>${pk.type2?`<span class="type-badge t-${pk.type2}" style="font-size:8px;padding:0 4px">${pk.type2}</span>`:''} ${pk.price}🪙
       </span>`
     ).join('');
     return `<div style="margin-bottom:10px;padding:9px;background:var(--surf2);border-radius:8px;border:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <b style="font-size:13px">${esc(r.playerName)}</b> ${matchLabel}
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <b style="font-size:13px">${esc(r.playerName)}</b> ${matchLabel} ${budgetLabel}
         <span style="font-size:10px;color:var(--muted)">${r.roster.length} Pokémon</span>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">${pkList}</div>
@@ -2476,6 +2483,7 @@ async function _doApplyImport(results, errEl) {
     if (!match) continue;
     const [pid] = match;
     updates[`players/${pid}/roster`] = r.roster;
+    if (r.budget !== null) updates[`players/${pid}/budget`] = r.budget;
     applied++;
   }
   if (!applied) {
