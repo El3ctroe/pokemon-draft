@@ -498,6 +498,26 @@ input:focus,textarea:focus{border-color:var(--yellow)}
     <div id="lobby-host-controls" style="display:none">
       <div id="lobby-err" style="display:none" class="err" style="margin-bottom:10px"></div>
       <button class="btn btn-yellow btn-lg" style="width:100%;padding:14px 0" id="start-btn" onclick="startDraft()">▶ Start Draft</button>
+
+      <!-- Import existing teams -->
+      <div style="margin-top:14px">
+        <button class="btn btn-ghost btn-sm" style="width:100%;font-size:12px" onclick="toggleImportPanel()">📥 Import Existing Teams</button>
+        <div id="import-panel" style="display:none;margin-top:10px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:12px">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.7">
+            Paste team data below. Each line = one player.<br>
+            Format: <code style="background:var(--card);padding:1px 4px;border-radius:3px;font-size:10px">PlayerName,PokémonName,Type1,Type2,Cost,PokémonName,Type1,Type2,Cost,...</code><br>
+            Type2 can be blank. Trailing comma is fine.
+          </div>
+          <textarea id="import-textarea" rows="5" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60," style="font-size:12px;font-family:monospace"></textarea>
+          <div id="import-err" style="display:none" class="err"></div>
+          <div id="import-preview" style="display:none;margin-top:8px"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost btn-sm" onclick="previewImport()" style="flex:1">Preview</button>
+            <button class="btn btn-green btn-sm" onclick="applyImport()" style="flex:1">Apply Import</button>
+          </div>
+        </div>
+      </div>
+
       <div style="text-align:center;margin-top:10px;display:flex;gap:16px;justify-content:center">
         <span class="splash-link" onclick="showScreen('host-setup')">← Back to Setup</span>
         <span class="splash-link" onclick="backToSplash()">🏠 Main Menu</span>
@@ -526,6 +546,7 @@ input:focus,textarea:focus{border-color:var(--yellow)}
       <span class="budget-chip" id="dh-budget" style="display:none"></span>
       <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="backToSplash()">🏠 Main Menu</button>
       <button id="dh-autoadvance-btn" class="btn btn-sm" style="display:none;font-size:11px" onclick="hostToggleAutoAdvance()" title="Toggle auto-advance">⏭ Auto: OFF</button>
+      <button id="dh-import-btn" class="btn btn-ghost btn-sm" style="display:none;font-size:11px" onclick="openImportModal()" title="Import teams">📥 Import</button>
       <button id="dh-end-draft-btn" class="btn btn-outline-red btn-sm" style="display:none;font-size:11px" onclick="hostEndDraftToLobby()">⏹ End Draft</button>
       <span id="dh-host-badge" style="display:none" class="host-badge">HOST</span>
     </div>
@@ -681,6 +702,25 @@ input:focus,textarea:focus{border-color:var(--yellow)}
         <div id="ep-add-err" style="display:none" class="err" style="margin-bottom:8px"></div>
         <button class="btn btn-green" style="width:100%;font-size:13px" onclick="epAddPokemon()">Add to Roster</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT TEAMS MODAL (mid-draft) -->
+<div id="modal-import" class="modal-overlay" onclick="if(event.target===this)closeImportModal()">
+  <div class="modal-box" style="max-width:560px">
+    <button class="modal-close" onclick="closeImportModal()">✕</button>
+    <div class="card-title" style="margin-bottom:6px">📥 Import / Overwrite Teams</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+      Each line = one player. The player name must match exactly (case-insensitive).<br>
+      <code style="background:var(--surf2);padding:2px 5px;border-radius:3px;font-size:10px;display:block;margin-top:5px">PlayerName,Pokémon,Type1,Type2,Cost,Pokémon,Type1,Type2,Cost,...</code>
+    </p>
+    <textarea id="modal-import-textarea" rows="7" style="font-size:12px;font-family:monospace" placeholder="Ash,Charizard,fire,flying,120,Pikachu,electric,,45,&#10;Misty,Gyarados,water,flying,95,Starmie,water,psychic,60,"></textarea>
+    <div id="modal-import-err" style="display:none" class="err"></div>
+    <div id="modal-import-preview" style="display:none;margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-ghost" style="flex:1" onclick="previewImportModal()">Preview</button>
+      <button class="btn btn-green" style="flex:1" onclick="applyImportModal()">✓ Apply</button>
     </div>
   </div>
 </div>
@@ -1255,6 +1295,8 @@ function renderDraftHeader() {
 
   const hostBadge = document.getElementById('dh-host-badge');
   if (hostBadge) hostBadge.style.display = local.isHost ? 'inline-block' : 'none';
+  const importBtn = document.getElementById('dh-import-btn');
+  if (importBtn) importBtn.style.display = local.isHost ? 'inline-flex' : 'none';
   const endBtn = document.getElementById('dh-end-draft-btn');
   if (endBtn) endBtn.style.display = local.isHost ? 'inline-flex' : 'none';
   const aaBtn = document.getElementById('dh-autoadvance-btn');
@@ -2303,6 +2345,140 @@ async function hostSkip() {
     // Will auto-end after host clicks Next on unsold screen
   } else {
     await db.ref(`rooms/${local.roomCode}/phase`).set('unsold');
+  }
+}
+
+// ============================================================
+// IMPORT TEAMS
+// ============================================================
+function parseImportText(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const results = [];
+  const errors = [];
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    // Strip trailing comma before splitting
+    const parts = line.replace(/,\s*$/, '').split(',').map(p => p.trim());
+    if (!parts[0]) continue;
+    const playerName = parts[0];
+    const roster = [];
+    // Each Pokémon takes 4 fields: name, type1, type2, cost
+    for (let i = 1; i + 2 < parts.length; i += 4) {
+      const pkName = parts[i];
+      const type1 = (parts[i+1] || '').toLowerCase();
+      const type2 = (parts[i+2] || '').toLowerCase() || null;
+      const cost = parseInt(parts[i+3]) || 0;
+      if (!pkName || !type1) { errors.push(`Line ${li+1}: Missing name or type1 for entry ${Math.floor((i-1)/4)+1}`); continue; }
+      const entry = { name: pkName, type1, bst: 0, price: cost };
+      if (type2) entry.type2 = type2;
+      roster.push(entry);
+    }
+    results.push({ playerName, roster });
+  }
+  return { results, errors };
+}
+
+function buildImportPreviewHtml(results, players) {
+  // Match parsed player names to room players (case-insensitive)
+  const roomPlayers = Object.entries(players || {});
+  return results.map(r => {
+    const match = roomPlayers.find(([,p]) => p.name.toLowerCase() === r.playerName.toLowerCase());
+    const matchLabel = match
+      ? `<span style="color:var(--green);font-size:10px;font-weight:700">✓ matches ${esc(match[1].name)}</span>`
+      : `<span style="color:var(--red2);font-size:10px;font-weight:700">⚠ no match (will skip)</span>`;
+    const pkList = r.roster.map(pk =>
+      `<span style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;white-space:nowrap">
+        ${esc(pk.name)} <span class="type-badge t-${pk.type1}" style="font-size:8px;padding:0 4px">${pk.type1}</span>${pk.type2?`<span class="type-badge t-${pk.type2}" style="font-size:8px;padding:0 4px">${pk.type2}</span>`:''} ${pk.price}🪙
+      </span>`
+    ).join('');
+    return `<div style="margin-bottom:10px;padding:9px;background:var(--surf2);border-radius:8px;border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <b style="font-size:13px">${esc(r.playerName)}</b> ${matchLabel}
+        <span style="font-size:10px;color:var(--muted)">${r.roster.length} Pokémon</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">${pkList}</div>
+    </div>`;
+  }).join('');
+}
+
+function previewImport() {
+  const text = document.getElementById('import-textarea').value;
+  const errEl = document.getElementById('import-err');
+  const previewEl = document.getElementById('import-preview');
+  const { results, errors } = parseImportText(text);
+  errEl.style.display = 'none'; previewEl.style.display = 'none';
+  if (errors.length) { errEl.textContent = errors.join(' | '); errEl.style.display = 'block'; }
+  if (!results.length) { errEl.textContent = (errEl.textContent || '') + ' No valid player data found.'; errEl.style.display = 'block'; return; }
+  previewEl.innerHTML = buildImportPreviewHtml(results, roomState?.players);
+  previewEl.style.display = 'block';
+}
+
+async function applyImport() {
+  const text = document.getElementById('import-textarea').value;
+  const errEl = document.getElementById('import-err');
+  const { results, errors } = parseImportText(text);
+  if (!results.length) { errEl.textContent = 'No valid data to import'; errEl.style.display = 'block'; return; }
+  await _doApplyImport(results, errEl);
+  document.getElementById('import-panel').style.display = 'none';
+  document.getElementById('import-textarea').value = '';
+}
+
+// Modal versions
+function toggleImportPanel() {
+  const p = document.getElementById('import-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+function openImportModal() {
+  document.getElementById('modal-import-preview').style.display = 'none';
+  document.getElementById('modal-import-err').style.display = 'none';
+  document.getElementById('modal-import').classList.add('active');
+}
+function closeImportModal() {
+  document.getElementById('modal-import').classList.remove('active');
+}
+function previewImportModal() {
+  const text = document.getElementById('modal-import-textarea').value;
+  const errEl = document.getElementById('modal-import-err');
+  const previewEl = document.getElementById('modal-import-preview');
+  const { results, errors } = parseImportText(text);
+  errEl.style.display = 'none'; previewEl.style.display = 'none';
+  if (errors.length) { errEl.textContent = errors.join(' | '); errEl.style.display = 'block'; }
+  if (!results.length) { errEl.textContent = (errEl.textContent||'') + ' No valid player data.'; errEl.style.display = 'block'; return; }
+  previewEl.innerHTML = buildImportPreviewHtml(results, roomState?.players);
+  previewEl.style.display = 'block';
+}
+async function applyImportModal() {
+  const text = document.getElementById('modal-import-textarea').value;
+  const errEl = document.getElementById('modal-import-err');
+  const { results } = parseImportText(text);
+  if (!results.length) { errEl.textContent = 'No valid data to import'; errEl.style.display = 'block'; return; }
+  await _doApplyImport(results, errEl);
+  closeImportModal();
+  document.getElementById('modal-import-textarea').value = '';
+}
+
+async function _doApplyImport(results, errEl) {
+  if (!local.isHost || !local.roomCode) return;
+  const roomPlayers = Object.entries(roomState?.players || {});
+  const updates = {};
+  let applied = 0;
+  for (const r of results) {
+    const match = roomPlayers.find(([,p]) => p.name.toLowerCase() === r.playerName.toLowerCase());
+    if (!match) continue;
+    const [pid] = match;
+    updates[`players/${pid}/roster`] = r.roster;
+    applied++;
+  }
+  if (!applied) {
+    if (errEl) { errEl.textContent = 'No player names matched. Check spelling.'; errEl.style.display = 'block'; }
+    return;
+  }
+  try {
+    await db.ref(`rooms/${local.roomCode}`).update(updates);
+    addLogEntry(`📥 Host imported teams for ${applied} player${applied>1?'s':''}`, 'info');
+    showToast(`Teams imported for ${applied} player${applied>1?'s':''}`, false);
+  } catch(e) {
+    if (errEl) { errEl.textContent = 'Import failed: ' + e.message; errEl.style.display = 'block'; }
   }
 }
 
